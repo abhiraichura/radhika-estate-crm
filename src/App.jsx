@@ -26,30 +26,24 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 
-// ============================================================================
-// FIREBASE CLOUD INITIALIZATION (STRICT RULE 1, 2, 3 COMPLIANCE)
-// ============================================================================
-const firebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config
-  ? JSON.parse(__firebase_config)
-  : { apiKey: "AIzaSyDStYs94sOjDjg0iY14srrKwn1WXmU91DM", authDomain: "radhika-estate-crm.firebaseapp.com", projectId: "radhika-estate-crm" };
+const firebaseConfig = {
+  apiKey: "AIzaSyDStYs94sOjDjg0iY14srrKwn1WXmU91DM",
+  authDomain: "radhika-estate-crm.firebaseapp.com",
+  projectId: "radhika-estate-crm"
+};
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : '1:104473849102:web:4b53147d666fdc9d3afb5f';
+const appId = 'radhika-estate-agency-os';
 
-// ============================================================================
-// RADHIKA ESTATE AGENCY - EXACT UNALTERED BRAND LOGO LOCK
-// Displays the exact uploaded PHOTO-2026-10-14-16-28-58.JPG image or allows
-// locking the original JPG directly into Cloud Firestore so it is never altered.
-// ============================================================================
 const ExactRadhikaBrandLogo = ({ customLogoUrl, onUploadLogo }) => {
   const [imgError, setImgError] = useState(false);
 
   return (
     <div className="inline-flex items-center gap-2 select-none">
       <label
-        title="Tap to lock your exact PHOTO-2026-10-14-16-28-58.JPG logo file"
+        title="Tap to lock your exact logo file"
         className="cursor-pointer flex items-center gap-2.5 group"
       >
         {customLogoUrl ? (
@@ -116,9 +110,6 @@ const ExactRadhikaBrandLogo = ({ customLogoUrl, onUploadLogo }) => {
   );
 };
 
-// ============================================================================
-// RAJKOT MICRO-MARKETS & CLEAN SAMPLE DATA
-// ============================================================================
 const RAJKOT_AREAS = [
   { name: 'Kalawad Road', code: 'KLWD', lat: 22.2839, lng: 70.7582, avgFlatSqFt: 5400, avgPlotVaar: 88000, jantriFlatSqFt: 2850, jantriPlotVaar: 42000, defaultTp: 'TP-22 (Mota Mava)', rudaZone: 'R1 Residential Prime' },
   { name: '150 Ft Ring Road', code: '150R', lat: 22.2753, lng: 70.7792, avgFlatSqFt: 5800, avgPlotVaar: 105000, jantriFlatSqFt: 3200, jantriPlotVaar: 51000, defaultTp: 'TP-16 (Ring Road)', rudaZone: 'Commercial / R2' },
@@ -139,7 +130,7 @@ const PROPERTY_CATEGORIES = [
   'Agricultural Land'
 ];
 
-const SAMPLE_PROPERTIES = [
+const INITIAL_PROPERTIES = [
   {
     id: 'prop-rea-101',
     uniqueCode: 'REA-101',
@@ -213,47 +204,10 @@ const SAMPLE_PROPERTIES = [
     clientViews: 3,
     lastVerifiedAt: Date.now() - 24 * 86400000,
     createdAt: Date.now() - 24 * 86400000
-  },
-  {
-    id: 'prop-rea-103',
-    uniqueCode: 'REA-103',
-    photoFileName: 'REA_METO_20261010_142005.jpg',
-    title: '900 Vaar Industrial Shed • Metoda GIDC',
-    category: 'Industrial GIDC Shed',
-    status: 'Available',
-    microMarket: 'Metoda GIDC',
-    areaCode: 'METO',
-    lat: 22.2385,
-    lng: 70.6621,
-    bhk: 0,
-    carpetSqFt: 8100,
-    areaVaar: 900,
-    floorNo: 'Ground + Mezzanine',
-    facing: 'North (Kuber Entry)',
-    vastuCompassDeg: 12,
-    frontageFt: 60,
-    depthFt: 135,
-    roadWidthMeters: 24,
-    tpNumber: 'Metoda GIDC Gate 2',
-    surveyNumber: 'GIDC Plot #G-2104',
-    rudaZone: 'GIDC Industrial',
-    bojaStatus: 'GIDC Lease Clear',
-    cornerPlot: false,
-    quotedPriceLakhs: 210,
-    bottomPriceLakhs: 196,
-    sourceType: 'Direct Owner',
-    ownerName: 'Vikasbhai Virani',
-    ownerPhone: '9909911223',
-    keyLocation: 'Manager Manojbhai on site',
-    publicHighlights: '60ft × 135ft Heavy Industrial Shed on 24m road, 125 HP power connection ready.',
-    voiceTranscript: 'Metoda GIDC Gate 2 shed, 900 vaar, 60 by 135 ft, asking 2.10 Cr.',
-    clientViews: 9,
-    lastVerifiedAt: Date.now() - 8 * 86400000,
-    createdAt: Date.now() - 8 * 86400000
   }
 ];
 
-const SAMPLE_LEADS = [
+const INITIAL_LEADS = [
   {
     id: 'lead-201',
     name: 'Chiragbhai Kotecha',
@@ -266,19 +220,6 @@ const SAMPLE_LEADS = [
     budgetMaxLakhs: 72,
     notes: 'East / Ishanya facing, middle floor, ready possession.',
     createdAt: Date.now() - 2 * 86400000
-  },
-  {
-    id: 'lead-202',
-    name: 'Ketanbhai Sorathiya',
-    phone: '9879122334',
-    preferredAreas: ['Mavdi', '150 Ft Ring Road'],
-    preferredCategories: ['Open Plot', 'Tenament / Bungalow'],
-    minBhk: 0,
-    minVaar: 180,
-    budgetMinLakhs: 105,
-    budgetMaxLakhs: 135,
-    notes: 'Looking for 180-220 Vaar corner plot in Mavdi TP-14.',
-    createdAt: Date.now() - 5 * 86400000
   }
 ];
 
@@ -292,22 +233,9 @@ const INITIAL_CO_BROKERS = [
     trustScore: 5,
     chainType: 'Direct 50:50 Split',
     notes: 'Direct contact with Mavdi TP-14 plot owners.'
-  },
-  {
-    id: 'cb-2',
-    name: 'Sanjaybhai Kotecha',
-    agency: 'Saurashtra Prime Deals',
-    phone: '9879044444',
-    specialtyArea: 'Kalawad Road & Nana Mava',
-    trustScore: 4,
-    chainType: 'Direct 50:50 Split',
-    notes: 'Strong luxury 3/4 BHK builder inventory on Kalawad Rd.'
   }
 ];
 
-// ============================================================================
-// HELPER UTILITIES
-// ============================================================================
 const formatPriceIndian = (lakhs) => {
   const num = Number(lakhs) || 0;
   if (num >= 100) return `₹${(num / 100).toFixed(2)} Cr`;
@@ -354,7 +282,6 @@ const evaluateMarketBadge = (prop) => {
   return { label: 'Market Rate', rateText: `₹${rate.toLocaleString('en-IN')}/Sq.Ft`, color: 'text-slate-600 bg-slate-100' };
 };
 
-// Clean 2D Plot / Shop Frontage Diagram (Used Inside Property Drawer & Tools)
 const SimplePlotDiagram = ({ frontageFt = 35, depthFt = 45, roadWidthMeters = 18, facing = 'East' }) => {
   const f = Math.max(10, Number(frontageFt) || 32);
   const d = Math.max(10, Number(depthFt) || 40);
@@ -374,7 +301,6 @@ const SimplePlotDiagram = ({ frontageFt = 35, depthFt = 45, roadWidthMeters = 18
   );
 };
 
-// Clean Watermark Renderer for Captured Photos
 const stampPhotoWithMetadata = (sourceImg, meta) => {
   return new Promise((resolve) => {
     const canvas = document.createElement('canvas');
@@ -395,7 +321,7 @@ const stampPhotoWithMetadata = (sourceImg, meta) => {
       ctx.fillStyle = '#E2E8F0';
       ctx.font = '13px sans-serif';
       ctx.fillText(
-        `File: ${meta.fileName}   |   Captured: ${meta.timestampStr}   |   GPS: ${Number(meta.lat).toFixed(4)}°N, ${Number(meta.lng).toFixed(4)}°E`,
+        `File: ${meta.fileName}   |   Captured: ${meta.timestampStr}   |   GPS: ${Number(meta.lat || 22.2839).toFixed(4)}°N, ${Number(meta.lng || 70.7582).toFixed(4)}°E`,
         18,
         502
       );
@@ -420,7 +346,6 @@ const stampPhotoWithMetadata = (sourceImg, meta) => {
   });
 };
 
-// Comprehensive Multi-Factor Compatibility Engine (Returns Score 0-100 + Reasons)
 const calculateMatchScore = (property, lead) => {
   if (!property || !lead) return { score: 0, reasons: [] };
   if (property.status === 'Sold') return { score: 0, reasons: ['Property Sold'] };
@@ -428,7 +353,6 @@ const calculateMatchScore = (property, lead) => {
   let score = 0;
   const reasons = [];
 
-  // 1. Category Match (Up to 35 pts)
   const prefCats = Array.isArray(lead.preferredCategories) ? lead.preferredCategories : [];
   if (prefCats.includes(property.category)) {
     score += 35;
@@ -444,7 +368,6 @@ const calculateMatchScore = (property, lead) => {
     reasons.push('Compatible Land/Tenament');
   }
 
-  // 2. Micro-Market Location Match (Up to 30 pts)
   const prefAreas = Array.isArray(lead.preferredAreas) ? lead.preferredAreas : [];
   if (prefAreas.includes(property.microMarket)) {
     score += 30;
@@ -453,7 +376,6 @@ const calculateMatchScore = (property, lead) => {
     score += 15;
   }
 
-  // 3. Budget Alignment (Up to 25 pts)
   const price = Number(property.quotedPriceLakhs) || 0;
   const bottom = Number(property.bottomPriceLakhs) || price;
   const maxB = Number(lead.budgetMaxLakhs) || 9999;
@@ -470,7 +392,6 @@ const calculateMatchScore = (property, lead) => {
     reasons.push('Stretch Budget (+12%)');
   }
 
-  // 4. Size / BHK / Vastu Bonus (Up to 10 pts)
   const minBhk = Number(lead.minBhk) || 0;
   const minVaar = Number(lead.minVaar) || 0;
   if (minBhk > 0 && Number(property.bhk) >= minBhk) {
@@ -492,7 +413,6 @@ const calculateMatchScore = (property, lead) => {
   return { score: Math.min(100, score), reasons };
 };
 
-// Interactive Digital Signature Pad Component for Gujarati Token Receipt
 const SignatureCanvasPad = ({ label, onSignChange }) => {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -585,8 +505,8 @@ const SignatureCanvasPad = ({ label, onSignChange }) => {
 };
 
 const callGeminiWithBackoff = async (payload, retries = 2, delay = 800) => {
-  const apiKey = "AQ.Ab8RN6ILPn8B__b6FGndAK-OrkfxBBNHM6b6O795ylAJ-J7Euw";
-  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+  const apiKey = "AIzaSyDStYs94sOjDjg0iY14srrKwn1WXmU91DM";
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
   try {
     const res = await fetch(apiUrl, {
       method: 'POST',
@@ -604,52 +524,40 @@ const callGeminiWithBackoff = async (payload, retries = 2, delay = 800) => {
   }
 };
 
-// ============================================================================
-// MAIN APPLICATION COMPONENT (ZERO-CLUTTER MOBILE UX + FULL EDITING & AI MATCH)
-// ============================================================================
 export default function App() {
   const [user, setUser] = useState(null);
-  const [cloudStatus, setCloudStatus] = useState('Synced');
+  const [cloudStatus, setCloudStatus] = useState('Connecting...');
 
-  // 4 Simple Screens: 'capture' | 'inventory' | 'buyers' | 'tools'
   const [activeTab, setActiveTab] = useState('capture');
 
-  // Database Collections
-  const [properties, setProperties] = useState(SAMPLE_PROPERTIES);
-  const [leads, setLeads] = useState(SAMPLE_LEADS);
+  const [properties, setProperties] = useState([]);
+  const [leads, setLeads] = useState([]);
   const [coBrokers, setCoBrokers] = useState(INITIAL_CO_BROKERS);
   const [customLogoUrl, setCustomLogoUrl] = useState(null);
 
-  // Single Privacy Toggle: false = Client View (Safe), true = Broker View (All Details)
   const [brokerView, setBrokerView] = useState(false);
 
-  // Clean Modals / Drawers & Editing States
   const [toast, setToast] = useState(null);
   const [selectedPropertyDrawer, setSelectedPropertyDrawer] = useState(null);
-  const [editingPropertyModal, setEditingPropertyModal] = useState(null); // Full Property Edit Modal
-  const [reverseMatchAlertModal, setReverseMatchAlertModal] = useState(null); // Auto-triggered after saving/updating a property
-  const [activeToolModal, setActiveToolModal] = useState(null); // 'converter' | 'hisab' | 'karar' | 'import' | 'tour'
+  const [editingPropertyModal, setEditingPropertyModal] = useState(null);
+  const [reverseMatchAlertModal, setReverseMatchAlertModal] = useState(null);
+  const [activeToolModal, setActiveToolModal] = useState(null);
 
-  // Site Visit Tour Selection State
-  const [tourPropertyIds, setTourPropertyIds] = useState(['prop-rea-101', 'prop-rea-102']);
-  const [tourBuyerId, setTourBuyerId] = useState('lead-201');
+  const [tourPropertyIds, setTourPropertyIds] = useState([]);
+  const [tourBuyerId, setTourBuyerId] = useState('');
 
   const notify = (message) => {
     setToast(message);
     setTimeout(() => setToast(null), 3500);
   };
 
-  // Firebase Auth & Sync
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
+        const cred = await signInAnonymously(auth);
+        setUser(cred.user);
       } catch (err) {
-        setCloudStatus('Offline Ready');
+        setCloudStatus('Offline Mode');
       }
     };
     initAuth();
@@ -670,7 +578,7 @@ export default function App() {
       propsCol,
       async (snap) => {
         if (snap.empty) {
-          for (const p of SAMPLE_PROPERTIES) {
+          for (const p of INITIAL_PROPERTIES) {
             await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'properties', p.id), p);
           }
         } else {
@@ -686,7 +594,7 @@ export default function App() {
       leadsCol,
       async (snap) => {
         if (snap.empty) {
-          for (const l of SAMPLE_LEADS) {
+          for (const l of INITIAL_LEADS) {
             await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'leads', l.id), l);
           }
         } else {
@@ -730,60 +638,64 @@ export default function App() {
           });
         } catch (err) {}
       }
-      notify('Your exact Radhika Estate Agency logo is now locked in Cloud!');
+      notify('Brand logo updated and locked in Cloud!');
     };
     reader.readAsDataURL(file);
   };
 
   const savePropertyToCloud = async (propObj) => {
-    setProperties((prev) => [propObj, ...prev.filter((p) => p.id !== propObj.id)]);
     if (selectedPropertyDrawer && selectedPropertyDrawer.id === propObj.id) {
       setSelectedPropertyDrawer(propObj);
     }
     if (user) {
       try {
         await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'properties', propObj.id), propObj);
-      } catch (e) {}
+        notify(`Saved ${propObj.uniqueCode} to Cloud Database!`);
+      } catch (e) {
+        notify('Error saving property to cloud.');
+      }
     }
   };
 
   const deletePropertyFromCloud = async (id) => {
-    setProperties((prev) => prev.filter((p) => p.id !== id));
     setSelectedPropertyDrawer(null);
     setEditingPropertyModal(null);
     if (user) {
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'properties', id));
-      } catch (e) {}
+        notify('Property permanently deleted from cloud.');
+      } catch (e) {
+        notify('Error deleting property from cloud.');
+      }
     }
-    notify('Property deleted.');
   };
 
   const saveLeadToCloud = async (leadObj) => {
-    setLeads((prev) => [leadObj, ...prev.filter((l) => l.id !== leadObj.id)]);
     if (user) {
       try {
         await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'leads', leadObj.id), leadObj);
-      } catch (e) {}
+        notify('Buyer saved successfully!');
+      } catch (e) {
+        notify('Error saving buyer.');
+      }
     }
   };
 
   const deleteLeadFromCloud = async (id) => {
-    setLeads((prev) => prev.filter((l) => l.id !== id));
     if (user) {
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'leads', id));
-      } catch (e) {}
+        notify('Buyer removed.');
+      } catch (e) {
+        notify('Error deleting buyer.');
+      }
     }
-    notify('Buyer removed.');
   };
 
-  // ==========================================================================
-  // SCREEN 1: ZERO-CLUTTER "ADD PROPERTY" (OR EDIT MODE)
-  // ==========================================================================
   const createBlankCapture = () => {
     const code = generateUniquePropCode();
     return {
+      id: `prop-${Date.now()}`,
       uniqueCode: code,
       photoFileName: generatePhotoFileName('KLWD'),
       timestampStr: new Date().toLocaleString('en-IN', {
@@ -835,7 +747,6 @@ export default function App() {
   const audioChunksRef = useRef([]);
   const recTimerRef = useRef(null);
 
-  // Action 1: Take or Upload Photo (Quietly tags ID, Time, GPS & Watermark)
   const handleSnapPhoto = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -901,7 +812,6 @@ export default function App() {
 
       notify(`Photo stamped (${code} • ${detectedArea.name})`);
 
-      // Quiet background OCR if banner or 7/12 text is visible
       setIsAiWorking(true);
       try {
         const base64Image = rawUrl.split(',')[1];
@@ -957,7 +867,6 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  // Action 2: Speak Property Details (Multimodal Audio -> Auto-Fills Everything)
   const runVoiceExtraction = async (audioBlob, sampleText) => {
     setIsAiWorking(true);
     try {
@@ -1063,7 +972,6 @@ ${sampleText ? `Dictation: ${sampleText}` : ''}`
       setRecSeconds(0);
       recTimerRef.current = setInterval(() => setRecSeconds((s) => s + 1), 1000);
     } catch (err) {
-      // Instant simulation if microphone isn't connected on desktop preview
       await runVoiceExtraction(
         null,
         '3 BHK flat on Kalawad Road near Crystal Mall, 1350 sq ft carpet, East facing, asking 66 Lakhs, owner Rameshbhai 9825012345.'
@@ -1089,7 +997,6 @@ ${sampleText ? `Dictation: ${sampleText}` : ''}`
     setDraft(createBlankCapture());
     setShowManualEditDrawer(false);
 
-    // Automatically check if this property matches any active buyers (Reverse Matchmaker)
     const instantMatches = leads
       .map((l) => ({ lead: l, ...calculateMatchScore(savedProp, l) }))
       .filter((m) => m.score >= 55)
@@ -1106,7 +1013,6 @@ ${sampleText ? `Dictation: ${sampleText}` : ''}`
     setActiveTab('inventory');
   };
 
-  // Load any existing property into the Full Edit Modal or Capture form
   const openEditPropertyModal = (prop) => {
     setEditingPropertyModal({ ...prop });
   };
@@ -1129,9 +1035,6 @@ ${sampleText ? `Dictation: ${sampleText}` : ''}`
     notify(`Updated ${updated.uniqueCode} successfully!`);
   };
 
-  // ==========================================================================
-  // WHATSAPP SHARING, AI BUYER MATCHMAKER & TOOLS STATE
-  // ==========================================================================
   const [invSearch, setInvSearch] = useState('');
   const [invAreaFilter, setInvAreaFilter] = useState('All');
   const [invStatusFilter, setInvStatusFilter] = useState('All');
@@ -1184,10 +1087,9 @@ ${sampleText ? `Dictation: ${sampleText}` : ''}`
     sendWhatsApp(prop.ownerPhone, msg);
   };
 
-  // AI Instant Buyer Requirement Matcher (Type or Speak Any Requirement -> Ranked Compatible Properties + AI Pitch)
   const [aiQueryText, setAiQueryText] = useState('');
   const [isAiMatchRunning, setIsAiMatchRunning] = useState(false);
-  const [aiMatchResults, setAiMatchResults] = useState(null); // { parsedLead, rankedMatches }
+  const [aiMatchResults, setAiMatchResults] = useState(null);
   const [isBuyerRec, setIsBuyerRec] = useState(false);
   const buyerRecRef = useRef(null);
   const buyerChunksRef = useRef([]);
@@ -1284,7 +1186,6 @@ Current Inventory JSON: ${JSON.stringify(
         createdAt: Date.now()
       };
 
-      // Merge AI ranking with deterministic local scoring so there are zero missing matches
       const ranked = properties
         .filter((p) => p.status !== 'Sold')
         .map((prop) => {
@@ -1320,7 +1221,6 @@ Current Inventory JSON: ${JSON.stringify(
         notify(`AI matched ${ranked.filter((r) => r.score >= 50).length} compatible properties!`);
       }
     } catch (e) {
-      // Fallback deterministic ranking if offline
       const fallbackLead = {
         id: `lead-${Date.now()}`,
         name: 'Inquiry Buyer',
@@ -1382,7 +1282,6 @@ Current Inventory JSON: ${JSON.stringify(
     }
   };
 
-  // Buyer Add / Edit Modal State
   const [showBuyerModal, setShowBuyerModal] = useState(false);
   const [buyerForm, setBuyerForm] = useState({
     id: null,
@@ -1431,12 +1330,10 @@ Current Inventory JSON: ${JSON.stringify(
     setShowBuyerModal(true);
   };
 
-  // Tools State: Vaar Converter, Pakka Hisab, Token Receipt, WhatsApp Importer
   const [unitCalc, setUnitCalc] = useState({ vaar: 200, sqft: 1800, vigha: 0.1033, ratePerVaar: 65000 });
-  const [selectedToolPropId, setSelectedToolPropId] = useState(SAMPLE_PROPERTIES[0].id);
+  const [selectedToolPropId, setSelectedToolPropId] = useState(INITIAL_PROPERTIES[0].id);
   const [femaleRegDiscount, setFemaleRegDiscount] = useState(true);
   const [loanPercent, setLoanPercent] = useState(80);
-  const [interestRate, setInterestRate] = useState(8.6);
   const [kararForm, setKararForm] = useState({
     sellerName: 'Rameshbhai Patel',
     buyerName: 'Chiragbhai Kotecha',
@@ -1451,16 +1348,12 @@ Current Inventory JSON: ${JSON.stringify(
   const [waImportText, setWaImportText] = useState('');
 
   const selectedToolProp = useMemo(
-    () => properties.find((p) => p.id === selectedToolPropId) || properties[0],
+    () => properties.find((p) => p.id === selectedToolPropId) || properties[0] || INITIAL_PROPERTIES[0],
     [properties, selectedToolPropId]
   );
 
-  // ==========================================================================
-  // RENDER CLEAN MOBILE UI
-  // ==========================================================================
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 pb-24 font-sans">
-      {/* 1. CLEAN WHITE HEADER WITH UNALTERED RADHIKA ESTATE AGENCY LOGO */}
       <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-4 py-2.5">
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-2">
           <ExactRadhikaBrandLogo
@@ -1468,7 +1361,6 @@ Current Inventory JSON: ${JSON.stringify(
             onUploadLogo={handleUploadBrandLogo}
           />
 
-          {/* Single Simple Privacy Switch */}
           <button
             onClick={() => {
               setBrokerView(!brokerView);
@@ -1495,7 +1387,6 @@ Current Inventory JSON: ${JSON.stringify(
         </div>
       </header>
 
-      {/* SIMPLE TOAST NOTIFICATION */}
       {toast && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-full shadow-lg text-xs font-semibold flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-[#EA9E24] shrink-0" />
@@ -1503,11 +1394,7 @@ Current Inventory JSON: ${JSON.stringify(
         </div>
       )}
 
-      {/* MAIN CONTAINER (CENTERED MOBILE-FIRST WIDTH) */}
       <main className="max-w-3xl mx-auto px-4 pt-5">
-        {/* ====================================================================
-            SCREEN 1: ADD PROPERTY (JUST 2 BIG BUTTONS + CLEAN SUMMARY CARD)
-           ==================================================================== */}
         {activeTab === 'capture' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -1537,9 +1424,7 @@ Current Inventory JSON: ${JSON.stringify(
               </select>
             </div>
 
-            {/* 2 HUGE ACTION CARDS */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* BIG CARD 1: TAKE / UPLOAD PHOTO */}
               <label className="bg-white hover:bg-slate-50 border-2 border-dashed border-slate-300 hover:border-[#EA9E24] rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition min-h-[160px]">
                 <div className="w-12 h-12 rounded-full bg-amber-50 text-[#EA9E24] flex items-center justify-center mb-3">
                   <Camera className="w-6 h-6" />
@@ -1557,7 +1442,6 @@ Current Inventory JSON: ${JSON.stringify(
                 />
               </label>
 
-              {/* BIG CARD 2: SPEAK PROPERTY DETAILS */}
               <button
                 type="button"
                 onClick={toggleVoiceRecording}
@@ -1583,7 +1467,6 @@ Current Inventory JSON: ${JSON.stringify(
               </button>
             </div>
 
-            {/* AI WORKING INDICATOR */}
             {isAiWorking && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-2.5 text-xs font-semibold text-amber-900">
                 <RefreshCw className="w-4 h-4 animate-spin text-[#EA9E24]" />
@@ -1591,7 +1474,6 @@ Current Inventory JSON: ${JSON.stringify(
               </div>
             )}
 
-            {/* CLEAN AUTO-FILLED SUMMARY CARD */}
             <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4 shadow-2xs">
               {draft.watermarkedPhotoUrl && (
                 <img
@@ -1628,7 +1510,6 @@ Current Inventory JSON: ${JSON.stringify(
                 </div>
               </div>
 
-              {/* OPTIONAL COLLAPSIBLE EDIT DRAWER (Tucked neatly away unless needed) */}
               {showManualEditDrawer && (
                 <div className="pt-3 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                   <div className="col-span-2 sm:col-span-3">
@@ -1734,7 +1615,6 @@ Current Inventory JSON: ${JSON.stringify(
                 </div>
               )}
 
-              {/* ONE BIG SAVE BUTTON */}
               <button
                 type="button"
                 onClick={handleSaveProperty}
@@ -1747,12 +1627,8 @@ Current Inventory JSON: ${JSON.stringify(
           </div>
         )}
 
-        {/* ====================================================================
-            SCREEN 2: MY PROPERTIES (CLEAN LIST + 1-TAP EDIT & WHATSAPP)
-           ==================================================================== */}
         {activeTab === 'inventory' && (
           <div className="space-y-3">
-            {/* Simple Search & Area Filter */}
             <div className="flex flex-wrap sm:flex-nowrap gap-2">
               <div className="relative flex-1 min-w-[180px]">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -1786,7 +1662,6 @@ Current Inventory JSON: ${JSON.stringify(
               </select>
             </div>
 
-            {/* Clean List — Each Card Shows Thumbnail, Specs, Edit Button & WhatsApp Button */}
             <div className="space-y-2.5">
               {filteredProperties.map((prop) => {
                 const badge = evaluateMarketBadge(prop);
@@ -1804,7 +1679,6 @@ Current Inventory JSON: ${JSON.stringify(
                     onClick={() => setSelectedPropertyDrawer(prop)}
                     className="bg-white border border-slate-200 hover:border-slate-300 rounded-2xl p-3.5 flex items-center justify-between gap-3 cursor-pointer transition shadow-2xs"
                   >
-                    {/* Left: Thumbnail + Title & Area + Size & Price */}
                     <div className="flex items-center gap-3.5 min-w-0 flex-1">
                       <div className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 flex flex-col items-center justify-center shrink-0 overflow-hidden">
                         {prop.watermarkedPhotoUrl ? (
@@ -1865,7 +1739,6 @@ Current Inventory JSON: ${JSON.stringify(
                       </div>
                     </div>
 
-                    {/* Right: Direct Edit Button + WhatsApp Share Button */}
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
@@ -1897,12 +1770,8 @@ Current Inventory JSON: ${JSON.stringify(
           </div>
         )}
 
-        {/* ====================================================================
-            SCREEN 3: BUYERS & AI PROPERTY MATCHMAKER
-           ==================================================================== */}
         {activeTab === 'buyers' && (
           <div className="space-y-4">
-            {/* TOP AI BUYER-TO-PROPERTY MATCHMAKER BOX */}
             <div className="bg-white border-2 border-[#EA9E24]/60 rounded-2xl p-4 space-y-3 shadow-2xs">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -1963,7 +1832,6 @@ Current Inventory JSON: ${JSON.stringify(
                 </button>
               </div>
 
-              {/* Instant Ranked AI Match Results */}
               {aiMatchResults && (
                 <div className="pt-2 border-t border-slate-100 space-y-2">
                   <div className="flex items-center justify-between text-xs">
@@ -2028,7 +1896,6 @@ Current Inventory JSON: ${JSON.stringify(
               )}
             </div>
 
-            {/* SAVED BUYERS HEADER */}
             <div className="flex items-center justify-between gap-2 pt-1">
               <div>
                 <h1 className="text-base font-bold text-slate-900">Saved Buyers ({leads.length})</h1>
@@ -2093,7 +1960,6 @@ Current Inventory JSON: ${JSON.stringify(
                       </p>
                     )}
 
-                    {/* Clean Matched Properties Strip */}
                     <div className="pt-1 space-y-2">
                       <div className="flex items-center justify-between text-xs">
                         <span className="font-bold text-slate-500">
@@ -2144,9 +2010,6 @@ Current Inventory JSON: ${JSON.stringify(
           </div>
         )}
 
-        {/* ====================================================================
-            SCREEN 4: QUICK TOOLS (CLEAN CARD GRID + SITE VISIT PLANNER)
-           ==================================================================== */}
         {activeTab === 'tools' && (
           <div className="space-y-4">
             <div>
@@ -2157,7 +2020,6 @@ Current Inventory JSON: ${JSON.stringify(
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* TOOL CARD 1: VAAR / SQ.FT / VIGHA CONVERTER */}
               <button
                 onClick={() => setActiveToolModal('converter')}
                 className="bg-white hover:border-[#EA9E24] border border-slate-200 rounded-2xl p-5 text-left flex items-start justify-between gap-3 transition shadow-2xs"
@@ -2174,7 +2036,6 @@ Current Inventory JSON: ${JSON.stringify(
                 <ChevronRight className="w-5 h-5 text-slate-400 shrink-0 mt-1" />
               </button>
 
-              {/* TOOL CARD 2: PAKKA HISAB, JANTRI & EMI CALCULATOR */}
               <button
                 onClick={() => setActiveToolModal('hisab')}
                 className="bg-white hover:border-[#EA9E24] border border-slate-200 rounded-2xl p-5 text-left flex items-start justify-between gap-3 transition shadow-2xs"
@@ -2191,7 +2052,6 @@ Current Inventory JSON: ${JSON.stringify(
                 <ChevronRight className="w-5 h-5 text-slate-400 shrink-0 mt-1" />
               </button>
 
-              {/* TOOL CARD 3: TOKEN RECEIPT (SAMJUTI KARAR) WITH DIGITAL SIGNATURES */}
               <button
                 onClick={() => setActiveToolModal('karar')}
                 className="bg-white hover:border-[#EA9E24] border border-slate-200 rounded-2xl p-5 text-left flex items-start justify-between gap-3 transition shadow-2xs"
@@ -2208,7 +2068,6 @@ Current Inventory JSON: ${JSON.stringify(
                 <ChevronRight className="w-5 h-5 text-slate-400 shrink-0 mt-1" />
               </button>
 
-              {/* TOOL CARD 4: MULTI-PROPERTY SITE VISIT ROUTE & KEY TRACKER */}
               <button
                 onClick={() => setActiveToolModal('tour')}
                 className="bg-white hover:border-[#EA9E24] border border-slate-200 rounded-2xl p-5 text-left flex items-start justify-between gap-3 transition shadow-2xs"
@@ -2225,7 +2084,6 @@ Current Inventory JSON: ${JSON.stringify(
                 <ChevronRight className="w-5 h-5 text-slate-400 shrink-0 mt-1" />
               </button>
 
-              {/* TOOL CARD 5: WHATSAPP IMPORTER & CLOUD BACKUP */}
               <button
                 onClick={() => setActiveToolModal('import')}
                 className="bg-white hover:border-[#EA9E24] border border-slate-200 rounded-2xl p-5 text-left flex items-start justify-between gap-3 transition shadow-2xs sm:col-span-2"
@@ -2246,9 +2104,6 @@ Current Inventory JSON: ${JSON.stringify(
         )}
       </main>
 
-      {/* ======================================================================
-          DRAWER 1: PROPERTY FULL DETAILS (WITH EDIT BUTTON & OWNER PULSE PING)
-         ====================================================================== */}
       {selectedPropertyDrawer && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 space-y-4 max-h-[90vh] overflow-y-auto shadow-xl">
@@ -2291,7 +2146,6 @@ Current Inventory JSON: ${JSON.stringify(
               />
             )}
 
-            {/* Key Specs Row */}
             <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
               <div>
                 <span className="text-slate-400 block">Price</span>
@@ -2311,7 +2165,6 @@ Current Inventory JSON: ${JSON.stringify(
               </div>
             </div>
 
-            {/* 2D Layout Diagram */}
             <SimplePlotDiagram
               frontageFt={selectedPropertyDrawer.frontageFt}
               depthFt={selectedPropertyDrawer.depthFt}
@@ -2323,7 +2176,6 @@ Current Inventory JSON: ${JSON.stringify(
               {selectedPropertyDrawer.publicHighlights}
             </p>
 
-            {/* Private Broker Vault Details + 1-Tap Owner Availability Check */}
             <div className="p-3.5 rounded-xl bg-slate-100 border border-slate-200 text-xs space-y-2">
               <div className="font-bold text-slate-800 flex items-center justify-between">
                 <span>🔒 Private Owner & Vault Info</span>
@@ -2350,7 +2202,6 @@ Current Inventory JSON: ${JSON.stringify(
               </div>
             </div>
 
-            {/* Clean Action Buttons */}
             <div className="grid grid-cols-2 gap-2.5 pt-1">
               <button
                 onClick={() => shareClientSafePropertyOnWhatsApp(selectedPropertyDrawer)}
@@ -2399,9 +2250,6 @@ Current Inventory JSON: ${JSON.stringify(
         </div>
       )}
 
-      {/* ======================================================================
-          MODAL: FULL EDIT PROPERTY (EDIT ANY FIELD AT ANY TIME)
-         ====================================================================== */}
       {editingPropertyModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 space-y-4 max-h-[92vh] overflow-y-auto shadow-2xl">
@@ -2674,9 +2522,6 @@ Current Inventory JSON: ${JSON.stringify(
         </div>
       )}
 
-      {/* ======================================================================
-          MODAL: INSTANT REVERSE MATCH ALERT (POP-UP WHEN SAVING NEW PROPERTY)
-         ====================================================================== */}
       {reverseMatchAlertModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
@@ -2742,9 +2587,6 @@ Current Inventory JSON: ${JSON.stringify(
         </div>
       )}
 
-      {/* ======================================================================
-          MODAL: ADD OR EDIT BUYER REQUIREMENT
-         ====================================================================== */}
       {showBuyerModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-3 shadow-xl">
@@ -2869,9 +2711,6 @@ Current Inventory JSON: ${JSON.stringify(
         </div>
       )}
 
-      {/* ======================================================================
-          QUICK TOOLS MODALS (CONVERTER, PAKKA HISAB, KARAR, SITE VISIT TOUR, IMPORT)
-         ====================================================================== */}
       {activeToolModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 space-y-4 max-h-[90vh] overflow-y-auto shadow-xl">
@@ -2891,7 +2730,6 @@ Current Inventory JSON: ${JSON.stringify(
               </button>
             </div>
 
-            {/* TOOL 1: VAAR CONVERTER */}
             {activeToolModal === 'converter' && (
               <div className="space-y-3 text-xs">
                 <div className="grid grid-cols-2 gap-3">
@@ -2968,7 +2806,6 @@ Current Inventory JSON: ${JSON.stringify(
               </div>
             )}
 
-            {/* TOOL 2: PAKKA HISAB, GARVI JANTRI, SEC 194-IA TDS & BANK EMI */}
             {activeToolModal === 'hisab' && selectedToolProp && (
               <div className="space-y-3 text-xs">
                 <select
@@ -3025,10 +2862,9 @@ Current Inventory JSON: ${JSON.stringify(
                   const tdsAmount = tdsApplicable ? Number((base * 0.01).toFixed(2)) : 0;
                   const total = Number((base + stamp + reg + brok).toFixed(2));
 
-                  // 20-Year Monthly EMI Calculation
                   const loanLakhs = Number(((base * loanPercent) / 100).toFixed(2));
-                  const r = interestRate / 12 / 100;
-                  const n = 240; // 20 years
+                  const r = 8.6 / 12 / 100;
+                  const n = 240;
                   const emiRupees =
                     loanLakhs > 0
                       ? Math.round(
@@ -3090,7 +2926,6 @@ Current Inventory JSON: ${JSON.stringify(
               </div>
             )}
 
-            {/* TOOL 3: TOKEN RECEIPT (SAMJUTI KARAR) WITH DIGITAL TOUCH SIGNATURES */}
             {activeToolModal === 'karar' && selectedToolProp && (
               <div className="space-y-3 text-xs">
                 <div className="grid grid-cols-2 gap-2.5">
@@ -3136,7 +2971,6 @@ Current Inventory JSON: ${JSON.stringify(
                   આજરોજ <b>રાધિકા એસ્ટેટ એજન્સી (રાજકોટ)</b> મારફત મિલકત <b>{selectedToolProp.title}</b> ({selectedToolProp.areaVaar} વાર) વેચનાર <b>{kararForm.sellerName}</b> પાસેથી ખરીદનાર <b>{kararForm.buyerName}</b> એ કુલ <b>{formatPriceIndian(kararForm.agreedPriceLakhs)}</b> માં ખરીદવાનું નક્કી કરેલ છે. ટોકન પેટે આજરોજ <b>₹{Number(kararForm.tokenAmountRupees).toLocaleString('en-IN')}/-</b> ({kararForm.paymentMode}) આપેલ છે. પાકો દસ્તાવેજ {kararForm.saleDeedDays} દિવસમાં કરવાનો રહેશે.
                 </div>
 
-                {/* On-Screen Digital Signature Pads */}
                 <div className="grid grid-cols-2 gap-2.5">
                   <SignatureCanvasPad
                     label={`Seller Sign (${kararForm.sellerName})`}
@@ -3172,7 +3006,6 @@ Current Inventory JSON: ${JSON.stringify(
               </div>
             )}
 
-            {/* TOOL 4: MULTI-PROPERTY SITE VISIT TOUR & KEY TRACKER */}
             {activeToolModal === 'tour' && (
               <div className="space-y-3 text-xs">
                 <div>
@@ -3251,7 +3084,6 @@ Current Inventory JSON: ${JSON.stringify(
               </div>
             )}
 
-            {/* TOOL 5: WHATSAPP IMPORTER & CLOUD BACKUP */}
             {activeToolModal === 'import' && (
               <div className="space-y-4 text-xs">
                 <div className="space-y-2">
@@ -3320,9 +3152,6 @@ Current Inventory JSON: ${JSON.stringify(
         </div>
       )}
 
-      {/* ======================================================================
-          SIMPLE 4-TAB BOTTOM NAVIGATION BAR
-         ====================================================================== */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200 px-3 py-1.5">
         <div className="max-w-md mx-auto grid grid-cols-4 gap-1">
           <button

@@ -1,0 +1,15 @@
+{
+  "name": "Radhika Estate Agency CRM",
+  "short_name": "Radhika CRM",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#EA9E24",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2933/2933116.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

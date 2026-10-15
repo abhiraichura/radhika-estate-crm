@@ -31,12 +31,12 @@ import {
 // ============================================================================
 const firebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config
   ? JSON.parse(__firebase_config)
-  : { apiKey: "demo-key", authDomain: "demo.firebaseapp.com", projectId: "demo-project" };
+  : { apiKey: "AIzaSyDStYs94sOjDjg0iY14srrKwn1WXmU91DM", authDomain: "radhika-estate-crm.firebaseapp.com", projectId: "radhika-estate-crm" };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'radhika-estate-agency-os';
+const appId = typeof __app_id !== 'undefined' ? __app_id : '1:104473849102:web:4b53147d666fdc9d3afb5f';
 
 // ============================================================================
 // RADHIKA ESTATE AGENCY - EXACT UNALTERED BRAND LOGO LOCK
@@ -585,7 +585,7 @@ const SignatureCanvasPad = ({ label, onSignChange }) => {
 };
 
 const callGeminiWithBackoff = async (payload, retries = 2, delay = 800) => {
-  const apiKey = "";
+  const apiKey = "AQ.Ab8RN6ILPn8B__b6FGndAK-OrkfxBBNHM6b6O795ylAJ-J7Euw";
   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
   try {
     const res = await fetch(apiUrl, {

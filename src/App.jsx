@@ -27,9 +27,9 @@ import {
 } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDStYs94sOjDjg0iY14srrKwn1WXmU91DM",
-  authDomain: "radhika-estate-crm.firebaseapp.com",
-  projectId: "radhika-estate-crm"
+  apiKey: " ",
+  authDomain: " ",
+  projectId: " "
 };
 
 const app = initializeApp(firebaseConfig);
@@ -505,7 +505,7 @@ const SignatureCanvasPad = ({ label, onSignChange }) => {
 };
 
 const callGeminiWithBackoff = async (payload, retries = 2, delay = 800) => {
-  const apiKey = "AIzaSyDStYs94sOjDjg0iY14srrKwn1WXmU91DM";
+  const apiKey = "";
   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
   try {
     const res = await fetch(apiUrl, {

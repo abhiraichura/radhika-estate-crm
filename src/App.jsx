@@ -1,17 +1,33 @@
-// Radhika Estate Agency — Rajkot Field CRM & Deal OS (Production Build)
-// Configured for Vercel Environment Variables (VITE_*) + Firebase Firestore + Gemini 2.5/3 Flash
+// Radhika Estate Agency — Rajkot Field CRM & Deal OS (Production Build for Vercel + Vite)
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  Camera, Mic, Square, Lock, Unlock, Building2, Users, Calculator, Search,
-  CheckCircle2, MessageSquare, RefreshCw, Trash2, Download, X, Cloud, Eye,
-  ChevronRight, ChevronDown, PenTool, Printer, Scale, Wrench, Edit3,
-  Sparkles, Navigation, Clock, Check, Plus
+  Camera, Mic, Square, MapPin, Lock, Unlock,
+  Building2, Users, Calculator, Search,
+  CheckCircle2, Phone, MessageSquare, FileText,
+  RefreshCw, Trash2, Compass, Download, Upload,
+  X, Cloud, Eye, ChevronRight, ChevronDown,
+  PenTool, Printer, Scale, Star, Wrench,
+  Edit3, Sparkles, Navigation, Clock, Share2,
+  Check, AlertCircle, Volume2, Plus
 } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 
-const envFirebaseConfig = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_API_KEY)
+import { initializeApp } from 'firebase/app';
+import {
+  getAuth,
+  signInAnonymously,
+  signInWithCustomToken,
+  onAuthStateChanged
+} from 'firebase/auth';
+import {
+  getFirestore,
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  onSnapshot
+} from 'firebase/firestore';
+
+const firebaseConfig = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_API_KEY)
   ? {
       apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
       authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -20,14 +36,635 @@ const envFirebaseConfig = (typeof import.meta !== 'undefined' && import.meta.env
       messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
       appId: import.meta.env.VITE_FIREBASE_APP_ID
     }
-  : {"apiKey":"demo-key","authDomain":"demo.firebaseapp.com","projectId":"demo-project"};
+  : (typeof __firebase_config !== 'undefined' && __firebase_config
+      ? JSON.parse(__firebase_config)
+      : {"apiKey":"demo-key","authDomain":"demo.firebaseapp.com","projectId":"demo-project"});
 
-export const GEMINI_API_KEY = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_GEMINI_API_KEY)
-  ? import.meta.env.VITE_GEMINI_API_KEY
-  : "";
+if (typeof window !== 'undefined' && import.meta?.env?.VITE_GEMINI_API_KEY) {
+  window.__gemini_api_key = import.meta.env.VITE_GEMINI_API_KEY;
+} else if (typeof window !== 'undefined' && !window.__gemini_api_key) {
+  window.__gemini_api_key = "";
+}
 
-// NOTE: If you want to customize UI further, replace this file with the full Canvas App.jsx code.
-// Both work identically with the VITE_ environment variables above!
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'radhika-estate-agency-os';
+
+const RAJKOT_AREAS = [
+  {
+    "name": "Kalawad Road",
+    "code": "KLWD",
+    "lat": 22.2839,
+    "lng": 70.7582,
+    "avgFlatSqFt": 5400,
+    "avgPlotVaar": 88000,
+    "jantriFlatSqFt": 2850,
+    "jantriPlotVaar": 42000,
+    "defaultTp": "TP-22 (Mota Mava)",
+    "rudaZone": "R1 Residential Prime"
+  },
+  {
+    "name": "150 Ft Ring Road",
+    "code": "150R",
+    "lat": 22.2753,
+    "lng": 70.7792,
+    "avgFlatSqFt": 5800,
+    "avgPlotVaar": 105000,
+    "jantriFlatSqFt": 3200,
+    "jantriPlotVaar": 51000,
+    "defaultTp": "TP-16 (Ring Road)",
+    "rudaZone": "Commercial / R2"
+  },
+  {
+    "name": "Mavdi",
+    "code": "MAVD",
+    "lat": 22.2569,
+    "lng": 70.7768,
+    "avgFlatSqFt": 4100,
+    "avgPlotVaar": 64000,
+    "jantriFlatSqFt": 2100,
+    "jantriPlotVaar": 29500,
+    "defaultTp": "TP-14 (Mavdi)",
+    "rudaZone": "R1 Residential"
+  },
+  {
+    "name": "Nana Mava",
+    "code": "NMAV",
+    "lat": 22.2736,
+    "lng": 70.7644,
+    "avgFlatSqFt": 5100,
+    "avgPlotVaar": 82000,
+    "jantriFlatSqFt": 2650,
+    "jantriPlotVaar": 39000,
+    "defaultTp": "TP-20 (Nana Mava)",
+    "rudaZone": "R1 Residential Prime"
+  },
+  {
+    "name": "Raiya Road",
+    "code": "RAIY",
+    "lat": 22.3012,
+    "lng": 70.7615,
+    "avgFlatSqFt": 4800,
+    "avgPlotVaar": 76000,
+    "jantriFlatSqFt": 2450,
+    "jantriPlotVaar": 35000,
+    "defaultTp": "TP-28 (Raiya)",
+    "rudaZone": "R1 Residential"
+  },
+  {
+    "name": "Amin Marg",
+    "code": "AMIN",
+    "lat": 22.2864,
+    "lng": 70.781,
+    "avgFlatSqFt": 6200,
+    "avgPlotVaar": 118000,
+    "jantriFlatSqFt": 3500,
+    "jantriPlotVaar": 58000,
+    "defaultTp": "TP-09 (Amin Marg)",
+    "rudaZone": "R1 Luxury Residential"
+  },
+  {
+    "name": "University Road",
+    "code": "UNIV",
+    "lat": 22.2918,
+    "lng": 70.7429,
+    "avgFlatSqFt": 5300,
+    "avgPlotVaar": 85000,
+    "jantriFlatSqFt": 2700,
+    "jantriPlotVaar": 41000,
+    "defaultTp": "TP-25 (Munjka)",
+    "rudaZone": "R1 Institutional"
+  },
+  {
+    "name": "Metoda GIDC",
+    "code": "METO",
+    "lat": 22.2385,
+    "lng": 70.6621,
+    "avgFlatSqFt": 2900,
+    "avgPlotVaar": 24500,
+    "jantriFlatSqFt": 1500,
+    "jantriPlotVaar": 12500,
+    "defaultTp": "Metoda GIDC Ph-2",
+    "rudaZone": "GIDC Industrial"
+  }
+];
+const PROPERTY_CATEGORIES = [
+  "Residential Flat",
+  "Tenament / Bungalow",
+  "Open Plot",
+  "Commercial Shop / Office",
+  "Industrial GIDC Shed",
+  "Agricultural Land"
+];
+const SAMPLE_PROPERTIES = [
+  {
+    "id": "prop-rea-101",
+    "uniqueCode": "REA-101",
+    "photoFileName": "REA_KLWD_20261015_163012.jpg",
+    "title": "3 BHK Royal Luxuria • Kalawad Road",
+    "category": "Residential Flat",
+    "status": "Available",
+    "microMarket": "Kalawad Road",
+    "areaCode": "KLWD",
+    "lat": 22.2839,
+    "lng": 70.7582,
+    "bhk": 3,
+    "carpetSqFt": 1320,
+    "areaVaar": 146.6,
+    "floorNo": "5th Floor",
+    "facing": "North-East (Ishanya)",
+    "vastuCompassDeg": 68,
+    "frontageFt": 34,
+    "depthFt": 39,
+    "roadWidthMeters": 18,
+    "tpNumber": "TP-22 (Mota Mava)",
+    "surveyNumber": "Rev. Survey 312/P1",
+    "rudaZone": "R1 Residential Prime",
+    "bojaStatus": "Clear Title • No Bank Boja",
+    "cornerPlot": true,
+    "quotedPriceLakhs": 64.5,
+    "bottomPriceLakhs": 61.5,
+    "sourceType": "Direct Owner",
+    "ownerName": "Rameshbhai Patel",
+    "ownerPhone": "9825012345",
+    "keyLocation": "Watchman Bhimabhai at Gate 1",
+    "publicHighlights": "East-Ishanya Vastu entry, 2 car parkings, modular kitchen ready, 18m TP road touch.",
+    "voiceTranscript": "3 BHK flat on Kalawad Road behind Crystal Mall, 1320 carpet, 5th floor, asking 64.5 lakhs.",
+    "clientViews": 6,
+    "lastVerifiedAt": 1791781474570,
+    "createdAt": 1791781474571
+  },
+  {
+    "id": "prop-rea-102",
+    "uniqueCode": "REA-102",
+    "photoFileName": "REA_MAVD_20261012_111540.jpg",
+    "title": "200 Vaar Corner Plot • Mavdi TP-14",
+    "category": "Open Plot",
+    "status": "Available",
+    "microMarket": "Mavdi",
+    "areaCode": "MAVD",
+    "lat": 22.2569,
+    "lng": 70.7768,
+    "bhk": 0,
+    "carpetSqFt": 1800,
+    "areaVaar": 200,
+    "floorNo": "NA Open Plot",
+    "facing": "East (Surya Entry)",
+    "vastuCompassDeg": 84,
+    "frontageFt": 40,
+    "depthFt": 45,
+    "roadWidthMeters": 12,
+    "tpNumber": "TP-14 (Mavdi)",
+    "surveyNumber": "Survey No. 188/2",
+    "rudaZone": "R1 Residential",
+    "bojaStatus": "7/12 Clear • NA Order Approved",
+    "cornerPlot": true,
+    "quotedPriceLakhs": 126,
+    "bottomPriceLakhs": 120,
+    "sourceType": "Co-Broker (50:50)",
+    "ownerName": "Via Hareshbhai (Omkar Estate)",
+    "ownerPhone": "9825055555",
+    "keyLocation": "Open Plot - Direct Site Visit",
+    "publicHighlights": "40ft × 45ft corner plot on 12m TP road, AnyROR 7/12 & NA Title clear.",
+    "voiceTranscript": "200 Vaar corner plot in Mavdi TP 14, 40 by 45 dimensions, total 1.26 Cr.",
+    "clientViews": 3,
+    "lastVerifiedAt": 1790053474571,
+    "createdAt": 1790053474571
+  },
+  {
+    "id": "prop-rea-103",
+    "uniqueCode": "REA-103",
+    "photoFileName": "REA_METO_20261010_142005.jpg",
+    "title": "900 Vaar Industrial Shed • Metoda GIDC",
+    "category": "Industrial GIDC Shed",
+    "status": "Available",
+    "microMarket": "Metoda GIDC",
+    "areaCode": "METO",
+    "lat": 22.2385,
+    "lng": 70.6621,
+    "bhk": 0,
+    "carpetSqFt": 8100,
+    "areaVaar": 900,
+    "floorNo": "Ground + Mezzanine",
+    "facing": "North (Kuber Entry)",
+    "vastuCompassDeg": 12,
+    "frontageFt": 60,
+    "depthFt": 135,
+    "roadWidthMeters": 24,
+    "tpNumber": "Metoda GIDC Gate 2",
+    "surveyNumber": "GIDC Plot #G-2104",
+    "rudaZone": "GIDC Industrial",
+    "bojaStatus": "GIDC Lease Clear",
+    "cornerPlot": false,
+    "quotedPriceLakhs": 210,
+    "bottomPriceLakhs": 196,
+    "sourceType": "Direct Owner",
+    "ownerName": "Vikasbhai Virani",
+    "ownerPhone": "9909911223",
+    "keyLocation": "Manager Manojbhai on site",
+    "publicHighlights": "60ft × 135ft Heavy Industrial Shed on 24m road, 125 HP power connection ready.",
+    "voiceTranscript": "Metoda GIDC Gate 2 shed, 900 vaar, 60 by 135 ft, asking 2.10 Cr.",
+    "clientViews": 9,
+    "lastVerifiedAt": 1791435874571,
+    "createdAt": 1791435874571
+  }
+];
+const SAMPLE_LEADS = [
+  {
+    "id": "lead-201",
+    "name": "Chiragbhai Kotecha",
+    "phone": "9824288990",
+    "preferredAreas": [
+      "Kalawad Road",
+      "Nana Mava",
+      "150 Ft Ring Road"
+    ],
+    "preferredCategories": [
+      "Residential Flat"
+    ],
+    "minBhk": 3,
+    "minVaar": 120,
+    "budgetMinLakhs": 55,
+    "budgetMaxLakhs": 72,
+    "notes": "East / Ishanya facing, middle floor, ready possession.",
+    "createdAt": 1791954274571
+  },
+  {
+    "id": "lead-202",
+    "name": "Ketanbhai Sorathiya",
+    "phone": "9879122334",
+    "preferredAreas": [
+      "Mavdi",
+      "150 Ft Ring Road"
+    ],
+    "preferredCategories": [
+      "Open Plot",
+      "Tenament / Bungalow"
+    ],
+    "minBhk": 0,
+    "minVaar": 180,
+    "budgetMinLakhs": 105,
+    "budgetMaxLakhs": 135,
+    "notes": "Looking for 180-220 Vaar corner plot in Mavdi TP-14.",
+    "createdAt": 1791695074571
+  }
+];
+const INITIAL_CO_BROKERS = [
+  {
+    "id": "cb-1",
+    "name": "Hareshbhai Patel",
+    "agency": "Omkar Estate (Mavdi)",
+    "phone": "9825055555",
+    "specialtyArea": "Mavdi & 150 Ft Ring Road",
+    "trustScore": 5,
+    "chainType": "Direct 50:50 Split",
+    "notes": "Direct contact with Mavdi TP-14 plot owners."
+  },
+  {
+    "id": "cb-2",
+    "name": "Sanjaybhai Kotecha",
+    "agency": "Saurashtra Prime Deals",
+    "phone": "9879044444",
+    "specialtyArea": "Kalawad Road & Nana Mava",
+    "trustScore": 4,
+    "chainType": "Direct 50:50 Split",
+    "notes": "Strong luxury 3/4 BHK builder inventory on Kalawad Rd."
+  }
+];
+
+const ExactRadhikaBrandLogo = ({ customLogoUrl, onUploadLogo }) => {
+    const [imgError, setImgError] = (0, import_react3.useState)(false);
+    return /* @__PURE__ */ import_react3.default.createElement("div", { className: "inline-flex items-center gap-2 select-none" }, /* @__PURE__ */ import_react3.default.createElement(
+      "label",
+      {
+        title: "Tap to lock your exact PHOTO-2026-10-14-16-28-58.JPG logo file",
+        className: "cursor-pointer flex items-center gap-2.5 group"
+      },
+      customLogoUrl ? /* @__PURE__ */ import_react3.default.createElement(
+        "img",
+        {
+          src: customLogoUrl,
+          alt: "Radhika Estate Agency",
+          className: "h-11 sm:h-12 w-auto object-contain bg-white rounded-lg"
+        }
+      ) : !imgError ? /* @__PURE__ */ import_react3.default.createElement(
+        "img",
+        {
+          src: "PHOTO-2026-10-14-16-28-58.JPG",
+          alt: "Radhika Estate Agency",
+          onError: () => setImgError(true),
+          className: "h-11 sm:h-12 w-auto object-contain bg-white"
+        }
+      ) : /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2.5" }, /* @__PURE__ */ import_react3.default.createElement(
+        "svg",
+        {
+          viewBox: "0 0 420 190",
+          className: "h-11 sm:h-12 w-auto",
+          fill: "none",
+          xmlns: "http://www.w3.org/2000/svg"
+        },
+        /* @__PURE__ */ import_react3.default.createElement("rect", { width: "420", height: "190", fill: "#FFFFFF" }),
+        /* @__PURE__ */ import_react3.default.createElement("polygon", { points: "124,78 136,70 136,120 124,120", fill: "#EA9E24" }),
+        /* @__PURE__ */ import_react3.default.createElement("polygon", { points: "141,60 173,41 173,120 141,120", fill: "#EA9E24" }),
+        /* @__PURE__ */ import_react3.default.createElement("polygon", { points: "160,21 186,36 186,120 178,120 178,38 160,29", fill: "#3D4043" }),
+        /* @__PURE__ */ import_react3.default.createElement("polygon", { points: "191,51 203,58 203,120 191,120", fill: "#3D4043" }),
+        /* @__PURE__ */ import_react3.default.createElement(
+          "polygon",
+          {
+            points: "110,120 212,120 212,114 220,114 249,71 278,114 286,114 286,120 269,120 249,89 229,120",
+            fill: "#EA9E24"
+          }
+        ),
+        /* @__PURE__ */ import_react3.default.createElement("rect", { x: "240", y: "99", width: "7.5", height: "7.5", fill: "#EA9E24" }),
+        /* @__PURE__ */ import_react3.default.createElement("rect", { x: "250.5", y: "99", width: "7.5", height: "7.5", fill: "#EA9E24" }),
+        /* @__PURE__ */ import_react3.default.createElement("rect", { x: "240", y: "109.5", width: "7.5", height: "7.5", fill: "#EA9E24" }),
+        /* @__PURE__ */ import_react3.default.createElement("rect", { x: "250.5", y: "109.5", width: "7.5", height: "7.5", fill: "#EA9E24" }),
+        /* @__PURE__ */ import_react3.default.createElement(
+          "polygon",
+          {
+            points: "273,90 286,73 300,93 300,80 309,80 309,107 315,114 315,120 295,120 284,102 278,96",
+            fill: "#3D4043"
+          }
+        ),
+        /* @__PURE__ */ import_react3.default.createElement(
+          "text",
+          {
+            x: "210",
+            y: "162",
+            textAnchor: "middle",
+            fill: "#434649",
+            fontFamily: "Inter, system-ui, sans-serif",
+            fontWeight: "700",
+            fontSize: "31",
+            letterSpacing: "-0.5"
+          },
+          "Radhika Estate Agency"
+        )
+      )),
+      /* @__PURE__ */ import_react3.default.createElement(
+        "input",
+        {
+          type: "file",
+          accept: "image/*",
+          onChange: onUploadLogo,
+          className: "hidden"
+        }
+      )
+    ));
+  };
+const formatPriceIndian = (lakhs) => {
+    const num = Number(lakhs) || 0;
+    if (num >= 100)
+      return `\u20B9${(num / 100).toFixed(2)} Cr`;
+    return `\u20B9${Number(num.toFixed(2))} Lakh`;
+  };
+const generateUniquePropCode = () => `REA-${Math.floor(100 + Math.random() * 900)}`;
+const generatePhotoFileName = (areaCode = "KLWD") => {
+    const now = /* @__PURE__ */ new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const hh = String(now.getHours()).padStart(2, "0");
+    const min = String(now.getMinutes()).padStart(2, "0");
+    return `REA_${areaCode}_${yyyy}${mm}${dd}_${hh}${min}.jpg`;
+  };
+const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const res = reader.result || "";
+      resolve(res.includes(",") ? res.split(",")[1] : res);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+const evaluateMarketBadge = (prop) => {
+    const areaObj = RAJKOT_AREAS.find((a) => a.name === prop.microMarket) || RAJKOT_AREAS[0];
+    const isLand = prop.category.includes("Plot") || prop.category.includes("Shed") || prop.category.includes("Land");
+    if (isLand) {
+      const rate2 = Math.round((Number(prop.quotedPriceLakhs) || 0) * 1e5 / Math.max(1, Number(prop.areaVaar) || 1));
+      const diff2 = Math.round((rate2 - areaObj.avgPlotVaar) / areaObj.avgPlotVaar * 100);
+      if (diff2 <= -8)
+        return { label: "Investor Value", rateText: `\u20B9${rate2.toLocaleString("en-IN")}/Vaar`, color: "text-[#3D4043] bg-[#EA9E24]/25 border border-[#EA9E24]" };
+      if (diff2 >= 15)
+        return { label: "Premium Quote", rateText: `\u20B9${rate2.toLocaleString("en-IN")}/Vaar`, color: "text-white bg-[#3D4043]" };
+      return { label: "Market Rate", rateText: `\u20B9${rate2.toLocaleString("en-IN")}/Vaar`, color: "text-[#3D4043] bg-stone-100 border border-stone-200" };
+    }
+    const rate = Math.round((Number(prop.quotedPriceLakhs) || 0) * 1e5 / Math.max(1, Number(prop.carpetSqFt) || 1));
+    const diff = Math.round((rate - areaObj.avgFlatSqFt) / areaObj.avgFlatSqFt * 100);
+    if (diff <= -8)
+      return { label: "Investor Value", rateText: `\u20B9${rate.toLocaleString("en-IN")}/Sq.Ft`, color: "text-[#3D4043] bg-[#EA9E24]/25 border border-[#EA9E24]" };
+    if (diff >= 15)
+      return { label: "Premium Quote", rateText: `\u20B9${rate.toLocaleString("en-IN")}/Sq.Ft`, color: "text-white bg-[#3D4043]" };
+    return { label: "Market Rate", rateText: `\u20B9${rate.toLocaleString("en-IN")}/Sq.Ft`, color: "text-[#3D4043] bg-stone-100 border border-stone-200" };
+  };
+const SimplePlotDiagram = ({ frontageFt = 35, depthFt = 45, roadWidthMeters = 18, facing = "East" }) => {
+    const f = Math.max(10, Number(frontageFt) || 32);
+    const d = Math.max(10, Number(depthFt) || 40);
+    return /* @__PURE__ */ import_react3.default.createElement("div", { className: "bg-stone-50 border border-stone-200 rounded-xl p-3 flex items-center justify-between gap-4" }, /* @__PURE__ */ import_react3.default.createElement("div", { className: "w-28 h-20 border-2 border-[#EA9E24] bg-[#EA9E24]/10 rounded-lg flex flex-col items-center justify-center text-center p-1 shrink-0" }, /* @__PURE__ */ import_react3.default.createElement("span", { className: "text-xs font-extrabold text-[#3D4043]" }, f, "ft \xD7 ", d, "ft"), /* @__PURE__ */ import_react3.default.createElement("span", { className: "text-[10px] font-semibold text-stone-600" }, Math.round(f * d / 9), " Vaar"), /* @__PURE__ */ import_react3.default.createElement("span", { className: "text-[9px] font-bold text-[#3D4043] mt-0.5" }, "\u25B2 ", facing.split(" ")[0], " Entry")), /* @__PURE__ */ import_react3.default.createElement("div", { className: "text-xs space-y-1 flex-1" }, /* @__PURE__ */ import_react3.default.createElement("div", { className: "font-bold text-[#3D4043]" }, "Frontage \xD7 Depth Layout"), /* @__PURE__ */ import_react3.default.createElement("div", { className: "text-stone-600" }, "Frontage: ", /* @__PURE__ */ import_react3.default.createElement("b", null, f, " ft"), " \u2022 Depth: ", /* @__PURE__ */ import_react3.default.createElement("b", null, d, " ft")), /* @__PURE__ */ import_react3.default.createElement("div", { className: "text-stone-600" }, "Road in Front: ", /* @__PURE__ */ import_react3.default.createElement("b", null, roadWidthMeters, "m TP Road"))));
+  };
+const stampPhotoWithMetadata = (sourceImg, meta) => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 800;
+      canvas.height = 520;
+      const ctx = canvas.getContext("2d");
+      const drawFooter = () => {
+        ctx.fillStyle = "rgba(61, 64, 67, 0.92)";
+        ctx.fillRect(0, 448, 800, 72);
+        ctx.fillStyle = "#EA9E24";
+        ctx.fillRect(0, 448, 800, 3);
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font = "bold 16px sans-serif";
+        ctx.fillText(`Radhika Estate Agency  \u2022  ${meta.uniqueCode}  \u2022  ${meta.microMarket}, Rajkot`, 18, 476);
+        ctx.fillStyle = "#E2E8F0";
+        ctx.font = "13px sans-serif";
+        ctx.fillText(
+          `File: ${meta.fileName}   |   Captured: ${meta.timestampStr}   |   GPS: ${Number(meta.lat).toFixed(4)}\xB0N, ${Number(meta.lng).toFixed(4)}\xB0E`,
+          18,
+          502
+        );
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      if (sourceImg) {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.max(800 / img.width, 520 / img.height);
+          const x2 = 400 - img.width / 2 * scale;
+          const y = 260 - img.height / 2 * scale;
+          ctx.drawImage(img, x2, y, img.width * scale, img.height * scale);
+          drawFooter();
+        };
+        img.src = sourceImg;
+      } else {
+        ctx.fillStyle = "#F1F5F9";
+        ctx.fillRect(0, 0, 800, 520);
+        drawFooter();
+      }
+    });
+  };
+const calculateMatchScore = (property, lead) => {
+    if (!property || !lead)
+      return { score: 0, reasons: [] };
+    if (property.status === "Sold")
+      return { score: 0, reasons: ["Property Sold"] };
+    let score = 0;
+    const reasons = [];
+    const prefCats = Array.isArray(lead.preferredCategories) ? lead.preferredCategories : [];
+    if (prefCats.includes(property.category)) {
+      score += 35;
+      reasons.push(`Exact ${property.category}`);
+    } else if (prefCats.some(
+      (c) => c.includes("Plot") && property.category.includes("Bungalow") || c.includes("Bungalow") && property.category.includes("Plot")
+    )) {
+      score += 18;
+      reasons.push("Compatible Land/Tenament");
+    }
+    const prefAreas = Array.isArray(lead.preferredAreas) ? lead.preferredAreas : [];
+    if (prefAreas.includes(property.microMarket)) {
+      score += 30;
+      reasons.push(`In ${property.microMarket}`);
+    } else if (prefAreas.length === 0) {
+      score += 15;
+    }
+    const price = Number(property.quotedPriceLakhs) || 0;
+    const bottom = Number(property.bottomPriceLakhs) || price;
+    const maxB = Number(lead.budgetMaxLakhs) || 9999;
+    const minB = Number(lead.budgetMinLakhs) || 0;
+    if (price <= maxB && price >= minB * 0.8) {
+      score += 25;
+      reasons.push(`Within \u20B9${maxB}L Budget`);
+    } else if (bottom <= maxB * 1.05) {
+      score += 18;
+      reasons.push("Negotiable Bottom Fits Budget");
+    } else if (price <= maxB * 1.15) {
+      score += 10;
+      reasons.push("Stretch Budget (+12%)");
+    }
+    const minBhk = Number(lead.minBhk) || 0;
+    const minVaar = Number(lead.minVaar) || 0;
+    if (minBhk > 0 && Number(property.bhk) >= minBhk) {
+      score += 5;
+      reasons.push(`${property.bhk} BHK`);
+    }
+    if (minVaar > 0 && Number(property.areaVaar) >= minVaar * 0.9) {
+      score += 5;
+      reasons.push(`${property.areaVaar} Vaar`);
+    }
+    if ((lead.notes || "").toLowerCase().includes("east") && (property.facing || "").toLowerCase().includes("east")) {
+      score = Math.min(100, score + 5);
+      reasons.push("East/Ishanya Vastu Match");
+    }
+    return { score: Math.min(100, score), reasons };
+  };
+const SignatureCanvasPad = ({ label, onSignChange }) => {
+    const canvasRef = (0, import_react3.useRef)(null);
+    const [isDrawing, setIsDrawing] = (0, import_react3.useState)(false);
+    const [hasSigned, setHasSigned] = (0, import_react3.useState)(false);
+    const getCoords = (e) => {
+      const canvas = canvasRef.current;
+      if (!canvas)
+        return { x: 0, y: 0 };
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top
+      };
+    };
+    const startDraw = (e) => {
+      e.preventDefault();
+      const canvas = canvasRef.current;
+      if (!canvas)
+        return;
+      const ctx = canvas.getContext("2d");
+      const { x: x2, y } = getCoords(e);
+      ctx.strokeStyle = "#1E293B";
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(x2, y);
+      setIsDrawing(true);
+      setHasSigned(true);
+    };
+    const moveDraw = (e) => {
+      if (!isDrawing)
+        return;
+      e.preventDefault();
+      const canvas = canvasRef.current;
+      if (!canvas)
+        return;
+      const ctx = canvas.getContext("2d");
+      const { x: x2, y } = getCoords(e);
+      ctx.lineTo(x2, y);
+      ctx.stroke();
+    };
+    const endDraw = () => {
+      if (!isDrawing)
+        return;
+      setIsDrawing(false);
+      if (onSignChange && canvasRef.current) {
+        onSignChange(canvasRef.current.toDataURL());
+      }
+    };
+    const clearPad = () => {
+      const canvas = canvasRef.current;
+      if (!canvas)
+        return;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      setHasSigned(false);
+      if (onSignChange)
+        onSignChange(null);
+    };
+    return /* @__PURE__ */ import_react3.default.createElement("div", { className: "bg-stone-50 border border-stone-200 rounded-xl p-2 text-center" }, /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center justify-between text-[10px] font-bold text-stone-500 mb-1 px-1" }, /* @__PURE__ */ import_react3.default.createElement("span", null, label), hasSigned && /* @__PURE__ */ import_react3.default.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: clearPad,
+        className: "text-[#3D4043] hover:underline font-bold"
+      },
+      "Clear"
+    )), /* @__PURE__ */ import_react3.default.createElement(
+      "canvas",
+      {
+        ref: canvasRef,
+        width: 200,
+        height: 64,
+        onMouseDown: startDraw,
+        onMouseMove: moveDraw,
+        onMouseUp: endDraw,
+        onMouseLeave: endDraw,
+        onTouchStart: startDraw,
+        onTouchMove: moveDraw,
+        onTouchEnd: endDraw,
+        className: "w-full h-16 bg-white border border-dashed border-stone-300 rounded-lg cursor-crosshair touch-none"
+      }
+    ));
+  };
+const callGeminiWithBackoff = (payload, customApiKey = "", retries = 2, delay = 800) => __async(void 0, null, function* () {
+    const runtimeKey = customApiKey || (typeof window !== "undefined" && window.__gemini_api_key ? window.__gemini_api_key : "");
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${runtimeKey}`;
+    try {
+      const res = yield fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok)
+        throw new Error(`HTTP ${res.status}`);
+      return yield res.json();
+    } catch (err) {
+      if (retries > 0) {
+        yield new Promise((r) => setTimeout(r, delay));
+        return callGeminiWithBackoff(payload, customApiKey, retries - 1, delay * 2);
+      }
+      throw err;
+    }
+  });
+const getFullStandaloneAppSource = () => '';
+
 function App() {
     var _a;
     const [user, setUser] = (0, import_react3.useState)(null);
@@ -2530,3 +3167,5 @@ ${summaryLines}
       /* @__PURE__ */ import_react3.default.createElement("span", { className: "text-[11px] mt-0.5" }, "Quick Tools")
     ))));
   }
+
+export default App;

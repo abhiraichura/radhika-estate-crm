@@ -1,0 +1,17 @@
+{
+  "short_name": "Radhika CRM",
+  "name": "Radhika Estate Agency — Rajkot Deal OS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#EA9E24",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/PHOTO-2026-10-14-16-28-58.JPG",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}

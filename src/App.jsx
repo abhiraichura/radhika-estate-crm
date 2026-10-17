@@ -114,21 +114,16 @@ function ExactRadhikaBrandLogo({ customLogoUrl, onUploadLogo }) {
         ) : (
           <div className="flex items-center gap-3">
             <svg viewBox="0 0 180 95" className="h-12 w-auto flex-shrink-0">
-              {/* Left Golden Amber Towers */}
               <polygon points="22,82 22,52 30,46 30,82" fill="#EA9E24" />
               <polygon points="33,82 33,36 53,24 53,82" fill="#EA9E24" />
-              {/* Center Charcoal Slate Towers */}
               <polygon points="43,30 43,10 61,20 61,82 56,82 56,22" fill="#3D4043" />
               <polygon points="65,82 65,36 73,41 73,82" fill="#3D4043" />
-              {/* Right Golden Amber House */}
               <polygon points="79,82 106,42 133,82 121,82 106,59 91,82" fill="#EA9E24" />
               <rect x="101" y="68" width="4" height="4" fill="#EA9E24" />
               <rect x="107" y="68" width="4" height="4" fill="#EA9E24" />
               <rect x="101" y="74" width="4" height="4" fill="#EA9E24" />
               <rect x="107" y="74" width="4" height="4" fill="#EA9E24" />
-              {/* Right Charcoal Slate Roof */}
               <polygon points="125,58 134,46 146,62 146,51 152,51 152,70 158,78 168,78 168,82 144,82" fill="#3D4043" />
-              {/* Base Line */}
               <rect x="12" y="80" width="80" height="3" fill="#EA9E24" />
             </svg>
             <div className="flex flex-col">
@@ -147,7 +142,7 @@ function ExactRadhikaBrandLogo({ customLogoUrl, onUploadLogo }) {
 }
 
 // ============================================================================
-// UTILITY HELPERS & REAL GEMINI 2.5 FLASH API CALLER
+// UTILITY HELPERS & ROBUST GEMINI MULTIMODAL AI CALLER
 // ============================================================================
 function formatPriceIndian(amount) {
   if (!amount) return '₹0';
@@ -177,44 +172,76 @@ function generatePhotoFileName(areaCode = 'KLWD') {
   return `RJT_${areaCode}_${yyyy}${mm}${dd}_${hh}${min}${ss}_${randHash}.jpg`;
 }
 
+function safeParseJsonFromText(rawText) {
+  if (!rawText) return {};
+  const cleaned = String(rawText)
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch (e2) {}
+    }
+    return {};
+  }
+}
+
 async function callGeminiStructuredAI({ prompt, inlineMimeType, inlineBase64, customKey }) {
   const activeKey = getResolvedGeminiKey(customKey);
   if (!activeKey) {
-    throw new Error("Missing VITE_GEMINI_API_KEY");
+    throw new Error("Missing Gemini API Key. Add VITE_GEMINI_API_KEY in Vercel or paste your key in 7/12 & Tools.");
   }
 
   const parts = [{ text: prompt }];
   if (inlineMimeType && inlineBase64) {
     const cleanBase64 = inlineBase64.includes(',') ? inlineBase64.split(',')[1] : inlineBase64;
+    const normalizedMime = inlineMimeType.split(';')[0].trim() || 'image/jpeg';
     parts.push({
       inlineData: {
-        mimeType: inlineMimeType,
+        mimeType: normalizedMime,
         data: cleanBase64
       }
     });
   }
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeKey}`;
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        temperature: 0.1
-      }
-    })
-  });
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+  let lastError = null;
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Gemini API Error (${response.status}): ${errText}`);
+  for (const modelName of modelsToTry) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.1
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        lastError = new Error(`Gemini (${modelName}) HTTP ${response.status}: ${errText}`);
+        continue;
+      }
+
+      const data = await response.json();
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+      return safeParseJsonFromText(rawText);
+    } catch (err) {
+      lastError = err;
+    }
   }
 
-  const data = await response.json();
-  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-  return JSON.parse(rawText);
+  throw lastError || new Error("Gemini AI request failed.");
 }
 
 function getDefaultSampleProperties() {
@@ -319,6 +346,7 @@ export default function App() {
   const [showAdvancedFields, setShowAdvancedFields] = useState(false);
   const [capturingPhoto, setCapturingPhoto] = useState(false);
   const [capturedPhotoUrl, setCapturedPhotoUrl] = useState('');
+  const [rawPhotoBase64, setRawPhotoBase64] = useState('');
   const [photoFileName, setPhotoFileName] = useState('');
   const [gpsLocationLabel, setGpsLocationLabel] = useState('Rajkot GPS Ready');
   const [selectedArea, setSelectedArea] = useState(RAJKOT_AREAS[0]);
@@ -348,6 +376,7 @@ export default function App() {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recognitionRef = useRef(null);
+  const liveTranscriptRef = useRef('');
 
   // Buyer Form & AI Matchmaker State
   const [buyerSearchQuery, setBuyerSearchQuery] = useState('');
@@ -361,7 +390,7 @@ export default function App() {
   const [isBuyerVoiceRecording, setIsBuyerVoiceRecording] = useState(false);
   const [reverseMatchModalProp, setReverseMatchModalProp] = useState(null);
 
-  // Quick Tools State (Vaar, 7/12 Utara, Pakka Hisab, Token Receipt, Cache Reset, GitHub Zip)
+  // Quick Tools State
   const [activeToolModal, setActiveToolModal] = useState(null);
   const [calcSqFt, setCalcSqFt] = useState('1350');
   const [calcVaar, setCalcVaar] = useState('150');
@@ -389,12 +418,14 @@ export default function App() {
     completionDays: '60'
   });
 
-  const photoInputRef = useRef(null);
+  // Two Separate File Input Refs: One for Live Camera, One for Gallery/File Upload
+  const cameraInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
   const utaraPhotoInputRef = useRef(null);
 
   const showToast = (msg) => {
     setStatusBanner(msg);
-    setTimeout(() => setStatusBanner(''), 4500);
+    setTimeout(() => setStatusBanner(''), 5000);
   };
 
   // ============================================================================
@@ -409,7 +440,7 @@ export default function App() {
           await signInAnonymously(auth);
         }
       } catch (err) {
-        console.warn("Firebase Auth running in fallback mode:", err.message);
+        console.warn("Firebase Auth fallback:", err.message);
         setLoadingCloud(false);
       }
     };
@@ -486,7 +517,6 @@ export default function App() {
     };
   }, [currentUser]);
 
-  // Save Brand Logo to Cloud Firestore
   const handleUploadBrandLogo = (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
@@ -507,9 +537,88 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
+  const handleSaveCustomGeminiKey = async (newKeyVal) => {
+    setCustomGeminiKey(newKeyVal);
+    if (currentUser) {
+      try {
+        await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'settings', 'brand'), {
+          geminiKey: newKeyVal.trim(),
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        showToast("Gemini AI Key Saved to Cloud Database!");
+      } catch (err) {
+        showToast("Gemini AI Key Set for Session!");
+      }
+    } else {
+      showToast("Gemini AI Key Set!");
+    }
+  };
+
   // ============================================================================
-  // 3. PHOTO CAPTURE + AUTO-STAMPING + REAL GEMINI VISION OCR
+  // 3. PHOTO CAPTURE OR GALLERY UPLOAD + GEMINI VISION AI SCANNER
   // ============================================================================
+  const runPhotoVisionAI = async (base64Image) => {
+    const imageToAnalyze = base64Image || rawPhotoBase64 || capturedPhotoUrl;
+    if (!imageToAnalyze) {
+      showToast("Please snap or upload a photo first!");
+      return;
+    }
+
+    if (!getResolvedGeminiKey(customGeminiKey)) {
+      showToast("Photo Stamped! Add your Gemini API key in '7/12 & Tools' for Vision AI OCR.");
+      return;
+    }
+
+    try {
+      setIsAiProcessing(true);
+      showToast("Gemini Vision AI scanning photo for property details & phone numbers...");
+      const aiResult = await callGeminiStructuredAI({
+        prompt: `You are an expert real estate assistant for Radhika Estate Agency in Rajkot, Gujarat.
+Analyze this uploaded property photo, For-Sale/To-Let board, visiting card, or brochure in ${selectedArea.name}, Rajkot.
+1. If there is text (phone number, owner/builder name, project name, BHK, Sq.Ft, Vaar, price), extract it accurately.
+2. Even if there is no text on the photo, visually analyze the architecture/interior/plot and suggest a professional listing title, category, and public brochure description for ${selectedArea.name}.
+Return strictly valid JSON with keys:
+{
+  "title": "Suggested or extracted Property Title",
+  "category": "Residential Flat (3BHK/2BHK) | Bungalow / Tenament | Open Plot / Land | Commercial Shop / Showroom | Industrial Shed / GIDC",
+  "bhk": "3 BHK / Commercial / Plot",
+  "sizeSqFt": 1350,
+  "sizeVaar": 150,
+  "priceQuoted": 7500000,
+  "ownerName": "Extracted Name or empty string",
+  "ownerPhone": "Extracted 10-digit Phone or empty string",
+  "publicNotes": "Attractive visual highlights of this property for client brochure"
+}`,
+        inlineMimeType: 'image/jpeg',
+        inlineBase64: imageToAnalyze,
+        customKey: customGeminiKey
+      });
+
+      if (aiResult.title) setPropTitle(String(aiResult.title));
+      if (aiResult.category && PROPERTY_CATEGORIES.includes(aiResult.category)) {
+        setPropCategory(aiResult.category);
+      }
+      if (aiResult.bhk) setPropBhk(String(aiResult.bhk));
+      if (aiResult.sizeSqFt && Number(aiResult.sizeSqFt) > 0) {
+        setPropSizeSqFt(String(aiResult.sizeSqFt));
+        setPropSizeVaar(String(Math.round(Number(aiResult.sizeSqFt) / 9)));
+      }
+      if (aiResult.priceQuoted && Number(aiResult.priceQuoted) > 0) {
+        setPropPriceQuoted(String(aiResult.priceQuoted));
+      }
+      if (aiResult.ownerName) setPropOwnerName(String(aiResult.ownerName));
+      if (aiResult.ownerPhone) setPropOwnerPhone(String(aiResult.ownerPhone));
+      if (aiResult.publicNotes) setPropPublicNotes(String(aiResult.publicNotes));
+
+      showToast("Gemini Vision AI Auto-Filled Property Details from Photo!");
+    } catch (aiErr) {
+      console.warn("Vision AI check:", aiErr.message);
+      showToast(`Photo Stamped! (AI Note: ${aiErr.message.slice(0, 65)})`);
+    } finally {
+      setIsAiProcessing(false);
+    }
+  };
+
   const handlePhotoSelect = (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
@@ -522,7 +631,6 @@ export default function App() {
       setPropTitle(`${propBhk} in ${selectedArea.name} (${code})`);
     }
 
-    // Grab GPS Coordinates if available
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -538,6 +646,8 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const rawDataUrl = ev.target.result;
+      setRawPhotoBase64(rawDataUrl);
+
       const img = new Image();
       img.onload = async () => {
         const canvas = document.createElement('canvas');
@@ -561,61 +671,40 @@ export default function App() {
         const stampedDataUrl = canvas.toDataURL('image/jpeg', 0.84);
         setCapturedPhotoUrl(stampedDataUrl);
         setCapturingPhoto(false);
-        showToast(`Photo Stamped: ${filename}`);
 
-        // Automatically run Gemini Vision if a key is configured (extracts Banner/Board phone numbers or specs)
-        if (getResolvedGeminiKey(customGeminiKey)) {
-          try {
-            setIsAiProcessing(true);
-            const aiResult = await callGeminiStructuredAI({
-              prompt: `You are an expert Rajkot real estate assistant. Analyze this property photo, To-Let/For-Sale board, or brochure in ${selectedArea.name}, Rajkot. If any phone number, project name, BHK, or size is visible, extract it. Return JSON with keys: title (string), bhk (string), sizeSqFt (number), sizeVaar (number), ownerName (string), ownerPhone (string), publicNotes (string).`,
-              inlineMimeType: 'image/jpeg',
-              inlineBase64: rawDataUrl,
-              customKey: customGeminiKey
-            });
-            if (aiResult.title) setPropTitle(aiResult.title);
-            if (aiResult.bhk) setPropBhk(aiResult.bhk);
-            if (aiResult.sizeSqFt) {
-              setPropSizeSqFt(String(aiResult.sizeSqFt));
-              setPropSizeVaar(String(Math.round(Number(aiResult.sizeSqFt) / 9)));
-            }
-            if (aiResult.ownerName) setPropOwnerName(aiResult.ownerName);
-            if (aiResult.ownerPhone) setPropOwnerPhone(aiResult.ownerPhone);
-            if (aiResult.publicNotes) setPropPublicNotes(aiResult.publicNotes);
-            showToast("Gemini Vision AI analyzed photo & auto-filled detected details!");
-          } catch (aiErr) {
-            console.warn("Vision AI optional check:", aiErr.message);
-          } finally {
-            setIsAiProcessing(false);
-          }
-        }
+        // Automatically run Gemini Vision AI on the uploaded photo
+        await runPhotoVisionAI(rawDataUrl);
       };
       img.src = rawDataUrl;
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   // ============================================================================
-  // 4. REAL MICROPHONE VOICE NOTE + GEMINI 2.5 FLASH AUTO-EXTRACTION
+  // 4. REAL MICROPHONE VOICE NOTE + TEXT BOX + GEMINI AI AUTO-EXTRACTION
   // ============================================================================
   const applyExtractedPropertyFields = (aiData) => {
     if (!aiData) return;
-    if (aiData.title) setPropTitle(aiData.title);
+    if (aiData.title) setPropTitle(String(aiData.title));
     if (aiData.areaName) {
-      const matched = RAJKOT_AREAS.find(a => a.name.toLowerCase().includes(String(aiData.areaName).toLowerCase()));
+      const matched = RAJKOT_AREAS.find(a =>
+        a.name.toLowerCase().includes(String(aiData.areaName).toLowerCase()) ||
+        String(aiData.areaName).toLowerCase().includes(a.name.split(' ')[0].toLowerCase())
+      );
       if (matched) setSelectedArea(matched);
     }
-    if (aiData.sizeSqFt) {
+    if (aiData.sizeSqFt && Number(aiData.sizeSqFt) > 0) {
       setPropSizeSqFt(String(aiData.sizeSqFt));
       setPropSizeVaar(String(Math.round(Number(aiData.sizeSqFt) / 9)));
-    } else if (aiData.sizeVaar) {
+    } else if (aiData.sizeVaar && Number(aiData.sizeVaar) > 0) {
       setPropSizeVaar(String(aiData.sizeVaar));
       setPropSizeSqFt(String(Math.round(Number(aiData.sizeVaar) * 9)));
     }
     if (aiData.bhk) setPropBhk(String(aiData.bhk));
     if (aiData.facing) setPropFacing(String(aiData.facing));
-    if (aiData.priceQuoted) setPropPriceQuoted(String(aiData.priceQuoted));
-    if (aiData.priceBottom) setPropPriceBottom(String(aiData.priceBottom));
+    if (aiData.priceQuoted && Number(aiData.priceQuoted) > 0) setPropPriceQuoted(String(aiData.priceQuoted));
+    if (aiData.priceBottom && Number(aiData.priceBottom) > 0) setPropPriceBottom(String(aiData.priceBottom));
     if (aiData.ownerName) setPropOwnerName(String(aiData.ownerName));
     if (aiData.ownerPhone) setPropOwnerPhone(String(aiData.ownerPhone));
     if (aiData.keyLocation) setPropKeyLocation(String(aiData.keyLocation));
@@ -623,19 +712,62 @@ export default function App() {
     if (aiData.privateVaultNotes) setPropPrivateVaultNotes(String(aiData.privateVaultNotes));
   };
 
+  const runLocalSmartFallbackParser = (textInput) => {
+    const textToParse = textInput || '';
+    if (!textToParse.trim()) return;
+
+    const lakhMatch = textToParse.match(/(\d+(?:\.\d+)?)\s*(?:lakh|lac|l\b|લાખ)/i);
+    const crMatch = textToParse.match(/(\d+(?:\.\d+)?)\s*(?:cr|crore|કરોડ)/i);
+    const sqftMatch = textToParse.match(/(\d{3,5})\s*(?:sq|ft|sqft|ફૂટ)/i);
+    const vaarMatch = textToParse.match(/(\d{2,4})\s*(?:vaar|var|yd|વાર)/i);
+    const bhkMatch = textToParse.match(/(\d)\s*bhk/i);
+    const phoneMatch = textToParse.match(/(?:\+91|0)?([6-9]\d{9})/);
+
+    for (const areaObj of RAJKOT_AREAS) {
+      const firstWord = areaObj.name.split(' ')[0].toLowerCase();
+      if (textToParse.toLowerCase().includes(firstWord)) {
+        setSelectedArea(areaObj);
+        break;
+      }
+    }
+
+    if (lakhMatch) setPropPriceQuoted(String(Math.round(parseFloat(lakhMatch[1]) * 100000)));
+    if (crMatch) setPropPriceQuoted(String(Math.round(parseFloat(crMatch[1]) * 10000000)));
+    if (sqftMatch) {
+      setPropSizeSqFt(sqftMatch[1]);
+      setPropSizeVaar(String(Math.round(Number(sqftMatch[1]) / 9)));
+    } else if (vaarMatch) {
+      setPropSizeVaar(vaarMatch[1]);
+      setPropSizeSqFt(String(Number(vaarMatch[1]) * 9));
+    }
+    if (bhkMatch) setPropBhk(`${bhkMatch[1]} BHK`);
+    if (phoneMatch) setPropOwnerPhone(phoneMatch[1]);
+    setPropPublicNotes(textToParse);
+    if (!propTitle) {
+      setPropTitle(`${bhkMatch ? bhkMatch[1] + ' BHK' : propBhk} in ${selectedArea.name}`);
+    }
+  };
+
   const runGeminiOnTextOrAudio = async ({ transcriptText = '', audioBase64 = '', mimeType = 'audio/webm' }) => {
     setIsAiProcessing(true);
+    const cleanText = transcriptText.startsWith('Listening...') ? '' : transcriptText.trim();
+
+    // Always run instant regex extraction first so UI updates immediately
+    if (cleanText) {
+      runLocalSmartFallbackParser(cleanText);
+    }
+
     try {
       const prompt = `You are an expert real estate broker assistant for Radhika Estate Agency in Rajkot, Gujarat.
-Parse this spoken or written property note (which may be in Gujarati, Hindi, or English) and extract structured fields.
+Listen to the attached audio (if provided) and/or read the spoken/written property note (which may be in Gujarati, Hindi, or English) and extract structured fields.
 Remember: 1 Vaar = 9 Sq.Ft. 1 Lakh = 100000. 1 Crore = 10000000.
-Spoken Transcript Context: "${transcriptText}"
+Spoken/Written Note Context: "${cleanText}"
 Current Area Context: "${selectedArea.name}"
 Return strictly valid JSON with keys:
 {
-  "transcript": "clean summary of what was said",
-  "title": "Property Title",
-  "areaName": "Kalawad Road / 150 Ft Ring Road / Mavdi / etc.",
+  "transcript": "accurate transcription or summary of what was said",
+  "title": "Property Title (e.g. Royal Heights 3 BHK Flat)",
+  "areaName": "Kalawad Road / 150 Ft Ring Road / Mavdi / Nana Mava / Raiya Road / University Road / Amin Marg / Tagore Road / Gondal Road / Jamnagar Road / Metoda",
   "sizeSqFt": 1350,
   "sizeVaar": 150,
   "bhk": "3 BHK",
@@ -643,7 +775,7 @@ Return strictly valid JSON with keys:
   "priceQuoted": 7800000,
   "priceBottom": 7400000,
   "ownerName": "Owner Name if mentioned",
-  "ownerPhone": "Phone if mentioned",
+  "ownerPhone": "10 digit phone if mentioned",
   "keyLocation": "Key info if mentioned",
   "publicNotes": "Clean highlights for buyer brochure",
   "privateVaultNotes": "Confidential broker notes"
@@ -656,34 +788,18 @@ Return strictly valid JSON with keys:
         customKey: customGeminiKey
       });
 
-      if (result.transcript && !transcriptText) {
+      if (result.transcript) {
         setAudioTranscript(result.transcript);
       }
       applyExtractedPropertyFields(result);
       showToast("Gemini AI Extracted & Auto-Filled All Property Fields!");
     } catch (err) {
-      console.warn("Gemini fallback parser:", err.message);
-      // Intelligent Local Regex Parser if offline or API key not yet active
-      const textToParse = transcriptText || `3 BHK luxury flat on ${selectedArea.name}, 1350 sq ft (150 Vaar), asking 78 Lakhs, East Vastu facing.`;
-      setAudioTranscript(textToParse);
-      const lakhMatch = textToParse.match(/(\d+(?:\.\d+)?)\s*(?:lakh|lac|l)/i);
-      const crMatch = textToParse.match(/(\d+(?:\.\d+)?)\s*(?:cr|crore)/i);
-      const sqftMatch = textToParse.match(/(\d{3,5})\s*(?:sq|ft|sqft)/i);
-      const vaarMatch = textToParse.match(/(\d{2,4})\s*(?:vaar|var|yd)/i);
-      const bhkMatch = textToParse.match(/(\d)\s*bhk/i);
-
-      if (lakhMatch) setPropPriceQuoted(String(Math.round( parseFloat(lakhMatch[1]) * 100000 )));
-      if (crMatch) setPropPriceQuoted(String(Math.round( parseFloat(crMatch[1]) * 10000000 )));
-      if (sqftMatch) {
-        setPropSizeSqFt(sqftMatch[1]);
-        setPropSizeVaar(String(Math.round(Number(sqftMatch[1]) / 9)));
-      } else if (vaarMatch) {
-        setPropSizeVaar(vaarMatch[1]);
-        setPropSizeSqFt(String(Number(vaarMatch[1]) * 9));
+      console.warn("Gemini AI Fallback Notice:", err.message);
+      if (cleanText) {
+        showToast("Smart Local Parser filled fields! (Check Gemini API Key in 7/12 & Tools for Cloud AI)");
+      } else {
+        showToast(`AI Note: ${err.message.slice(0, 75)}`);
       }
-      if (bhkMatch) setPropBhk(`${bhkMatch[1]} BHK`);
-      if (!propTitle) setPropTitle(`${selectedArea.name} ${bhkMatch ? bhkMatch[1] + ' BHK' : propBhk}`);
-      showToast("Voice Note Parsed & Property Fields Auto-Filled!");
     } finally {
       setIsAiProcessing(false);
     }
@@ -692,6 +808,7 @@ Return strictly valid JSON with keys:
   const toggleRecordVoice = async () => {
     if (!isRecording) {
       setIsRecording(true);
+      liveTranscriptRef.current = '';
       setAudioTranscript('Listening... Speak naturally in Gujarati, Hindi, or English...');
       audioChunksRef.current = [];
 
@@ -702,13 +819,16 @@ Return strictly valid JSON with keys:
           const rec = new SpeechRec();
           rec.continuous = true;
           rec.interimResults = true;
-          rec.lang = 'en-IN';
+          rec.lang = 'gu-IN'; // Supports Gujarati + English/Hindi code-switching in India
           rec.onresult = (ev) => {
             let txt = '';
             for (let i = 0; i < ev.results.length; i++) {
               txt += ev.results[i][0].transcript + ' ';
             }
-            if (txt.trim()) setAudioTranscript(txt.trim());
+            if (txt.trim()) {
+              liveTranscriptRef.current = txt.trim();
+              setAudioTranscript(txt.trim());
+            }
           };
           rec.start();
           recognitionRef.current = rec;
@@ -725,19 +845,21 @@ Return strictly valid JSON with keys:
           };
           recorder.onstop = () => {
             stream.getTracks().forEach(t => t.stop());
+            const capturedSpeechText = liveTranscriptRef.current || '';
             if (audioChunksRef.current.length > 0) {
-              const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+              const detectedMime = recorder.mimeType || 'audio/webm';
+              const blob = new Blob(audioChunksRef.current, { type: detectedMime });
               const reader = new FileReader();
               reader.onloadend = () => {
                 runGeminiOnTextOrAudio({
-                  transcriptText: audioTranscript.startsWith('Listening...') ? '' : audioTranscript,
+                  transcriptText: capturedSpeechText,
                   audioBase64: reader.result,
-                  mimeType: blob.type || 'audio/webm'
+                  mimeType: detectedMime
                 });
               };
               reader.readAsDataURL(blob);
             } else {
-              runGeminiOnTextOrAudio({ transcriptText: audioTranscript });
+              runGeminiOnTextOrAudio({ transcriptText: capturedSpeechText });
             }
           };
           recorder.start();
@@ -745,16 +867,11 @@ Return strictly valid JSON with keys:
           return;
         } catch (micErr) {
           console.warn("Mic permission fallback:", micErr.message);
+          setIsRecording(false);
+          showToast("Microphone permission blocked by browser. Type or paste details in the AI box below!");
+          return;
         }
       }
-
-      // Fallback if mic permission denied in sandboxed iframe
-      setTimeout(() => {
-        setIsRecording(false);
-        const fallbackNote = `3 BHK luxury flat on ${selectedArea.name}, 1350 sq ft (150 Vaar), asking 78 Lakhs, bottom 74 Lakhs, East Vastu facing, key with watchman.`;
-        setAudioTranscript(fallbackNote);
-        runGeminiOnTextOrAudio({ transcriptText: fallbackNote });
-      }, 2200);
     } else {
       // Stop Recording
       setIsRecording(false);
@@ -764,7 +881,7 @@ Return strictly valid JSON with keys:
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
       } else {
-        runGeminiOnTextOrAudio({ transcriptText: audioTranscript });
+        runGeminiOnTextOrAudio({ transcriptText: liveTranscriptRef.current || audioTranscript });
       }
     }
   };
@@ -773,70 +890,75 @@ Return strictly valid JSON with keys:
   const toggleBuyerVoiceDictation = async () => {
     if (!isBuyerVoiceRecording) {
       setIsBuyerVoiceRecording(true);
-      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRec) {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         try {
-          const rec = new SpeechRec();
-          rec.lang = 'en-IN';
-          rec.onresult = async (ev) => {
-            const spoken = ev.results[0][0].transcript;
-            setNewBuyerReq(spoken);
-            setIsBuyerVoiceRecording(false);
-            if (getResolvedGeminiKey(customGeminiKey)) {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const chunks = [];
+          const recorder = new MediaRecorder(stream);
+          recorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) chunks.push(e.data);
+          };
+          recorder.onstop = () => {
+            stream.getTracks().forEach(t => t.stop());
+            const mime = recorder.mimeType || 'audio/webm';
+            const blob = new Blob(chunks, { type: mime });
+            const reader = new FileReader();
+            reader.onloadend = async () => {
               try {
                 setIsAiProcessing(true);
                 const parsed = await callGeminiStructuredAI({
-                  prompt: `Extract Rajkot buyer requirement from: "${spoken}". Return JSON with keys: name (string), phone (string), preferredArea (string), budgetMax (number in INR), minBhk (string), requirementText (string).`,
+                  prompt: `Listen to this Rajkot real estate buyer inquiry audio and extract JSON with keys: name (string), phone (string), preferredArea (string), budgetMax (number in INR), minBhk (string), requirementText (string summary).`,
+                  inlineMimeType: mime,
+                  inlineBase64: reader.result,
                   customKey: customGeminiKey
                 });
-                if (parsed.name) setNewBuyerName(parsed.name);
-                if (parsed.phone) setNewBuyerPhone(parsed.phone);
-                if (parsed.preferredArea) setNewBuyerArea(parsed.preferredArea);
+                if (parsed.name) setNewBuyerName(String(parsed.name));
+                if (parsed.phone) setNewBuyerPhone(String(parsed.phone));
+                if (parsed.preferredArea) setNewBuyerArea(String(parsed.preferredArea));
                 if (parsed.budgetMax) setNewBuyerBudget(String(parsed.budgetMax));
-                if (parsed.minBhk) setNewBuyerBhk(parsed.minBhk);
-                showToast("Gemini AI Parsed Buyer Inquiry!");
-              } catch (e) {} finally {
+                if (parsed.minBhk) setNewBuyerBhk(String(parsed.minBhk));
+                if (parsed.requirementText) setNewBuyerReq(String(parsed.requirementText));
+                showToast("Gemini AI Extracted Buyer Requirement from Voice!");
+              } catch (err) {
+                showToast("Voice captured! Enter buyer details below.");
+              } finally {
                 setIsAiProcessing(false);
               }
-            }
+            };
+            reader.readAsDataURL(blob);
           };
-          rec.onerror = () => setIsBuyerVoiceRecording(false);
-          rec.start();
+          recorder.start();
+          mediaRecorderRef.current = recorder;
           return;
-        } catch (e) {}
+        } catch (e) {
+          setIsBuyerVoiceRecording(false);
+          showToast("Mic access needed. Please allow microphone permission.");
+        }
       }
-      setTimeout(() => {
-        setIsBuyerVoiceRecording(false);
-        setNewBuyerName("Jayeshbhai Sorathiya");
-        setNewBuyerPhone("9825099887");
-        setNewBuyerArea("Kalawad Road");
-        setNewBuyerBudget("8500000");
-        setNewBuyerReq("3 BHK East facing flat on Kalawad Road or University Road under 85 Lakhs");
-        showToast("Buyer Voice Inquiry Parsed!");
-      }, 1800);
     } else {
       setIsBuyerVoiceRecording(false);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
     }
   };
 
-  // Compute Matching Score Between a Property and a Buyer (Safe against numeric/null Firestore fields)
+  // Safe Matching Score Calculator
   const calculateMatchScore = (prop, buyer) => {
     let score = 62;
     const reasons = [];
-    const propAreaStr = String(prop?.areaName || '').toLowerCase();
     const buyerAreaStr = String(buyer?.preferredArea || '').toLowerCase();
-    const propBhkStr = String(prop?.bhk || '').toLowerCase();
+    const propAreaStr = String(prop?.areaName || '').toLowerCase();
     const buyerBhkStr = String(buyer?.minBhk || '').toLowerCase();
-    const propPriceNum = Number(prop?.priceQuoted || 0);
-    const buyerBudgetNum = Number(buyer?.budgetMax || 0);
+    const propBhkStr = String(prop?.bhk || '').toLowerCase();
 
     if (buyerAreaStr && propAreaStr && propAreaStr.includes(buyerAreaStr)) {
       score += 22;
       reasons.push(`Exact Area (${prop.areaName})`);
     }
-    if (buyerBudgetNum > 0 && propPriceNum <= buyerBudgetNum * 1.08) {
+    if (buyer?.budgetMax && Number(prop?.priceQuoted) <= Number(buyer.budgetMax) * 1.08) {
       score += 11;
-      reasons.push(`Fits Budget (${formatPriceIndian(propPriceNum)})`);
+      reasons.push(`Fits Budget (${formatPriceIndian(prop.priceQuoted)})`);
     }
     if (buyerBhkStr && propBhkStr && propBhkStr.includes(buyerBhkStr)) {
       score += 4;
@@ -854,25 +976,25 @@ Return strictly valid JSON with keys:
       uniqueCode: editingPropId
         ? (properties.find(p => p.id === editingPropId)?.uniqueCode || generateUniquePropCode(selectedArea.code))
         : generateUniquePropCode(selectedArea.code),
-      title: propTitle || `${propBhk} in ${selectedArea.name}`,
-      category: propCategory,
-      areaName: selectedArea.name,
+      title: String(propTitle || `${propBhk} in ${selectedArea.name}`),
+      category: String(propCategory),
+      areaName: String(selectedArea.name),
       sizeSqFt: Number(propSizeSqFt) || 1350,
       sizeVaar: Number(propSizeVaar) || 150,
-      bhk: propBhk,
-      facing: propFacing,
+      bhk: String(propBhk || '3 BHK'),
+      facing: String(propFacing || 'East'),
       priceQuoted: Number(propPriceQuoted) || 7500000,
       priceBottom: Number(propPriceBottom) || 7100000,
-      ownerName: propOwnerName || 'Direct Owner',
-      ownerPhone: propOwnerPhone || '9825012345',
-      keyLocation: propKeyLocation,
-      tpNumber: propTpNumber,
-      fpNumber: propFpNumber,
-      surveyNumber: propSurveyNumber,
-      rudaZone: propRudaZone,
-      status: propStatus,
-      publicNotes: propPublicNotes,
-      privateVaultNotes: propPrivateVaultNotes,
+      ownerName: String(propOwnerName || 'Direct Owner'),
+      ownerPhone: String(propOwnerPhone || '9825012345'),
+      keyLocation: String(propKeyLocation || ''),
+      tpNumber: String(propTpNumber || ''),
+      fpNumber: String(propFpNumber || ''),
+      surveyNumber: String(propSurveyNumber || ''),
+      rudaZone: String(propRudaZone || ''),
+      status: String(propStatus || 'Available'),
+      publicNotes: String(propPublicNotes || ''),
+      privateVaultNotes: String(propPrivateVaultNotes || ''),
       photoUrl: capturedPhotoUrl,
       createdAt: new Date().toISOString()
     };
@@ -894,6 +1016,7 @@ Return strictly valid JSON with keys:
     setEditingPropId(null);
     setPropTitle('');
     setCapturedPhotoUrl('');
+    setRawPhotoBase64('');
     setAudioTranscript('');
     setActiveTab('properties');
     setReverseMatchModalProp(newProp);
@@ -904,24 +1027,24 @@ Return strictly valid JSON with keys:
     setEditingPropId(prop.id);
     const matchedArea = RAJKOT_AREAS.find(a => a.name === prop.areaName) || RAJKOT_AREAS[0];
     setSelectedArea(matchedArea);
-    setPropTitle(prop.title || '');
-    setPropCategory(prop.category || PROPERTY_CATEGORIES[0]);
+    setPropTitle(String(prop.title || ''));
+    setPropCategory(String(prop.category || PROPERTY_CATEGORIES[0]));
     setPropSizeSqFt(String(prop.sizeSqFt || 1350));
     setPropSizeVaar(String(prop.sizeVaar || 150));
-    setPropBhk(prop.bhk || '3 BHK');
-    setPropFacing(prop.facing || 'East');
+    setPropBhk(String(prop.bhk || '3 BHK'));
+    setPropFacing(String(prop.facing || 'East'));
     setPropPriceQuoted(String(prop.priceQuoted || 7500000));
     setPropPriceBottom(String(prop.priceBottom || 7100000));
-    setPropOwnerName(prop.ownerName || '');
-    setPropOwnerPhone(prop.ownerPhone || '');
-    setPropKeyLocation(prop.keyLocation || '');
-    setPropTpNumber(prop.tpNumber || 'TP-14');
-    setPropFpNumber(prop.fpNumber || 'FP-82');
-    setPropSurveyNumber(prop.surveyNumber || '');
-    setPropRudaZone(prop.rudaZone || 'R1 - Residential Zone');
-    setPropStatus(prop.status || 'Available');
-    setPropPublicNotes(prop.publicNotes || '');
-    setPropPrivateVaultNotes(prop.privateVaultNotes || '');
+    setPropOwnerName(String(prop.ownerName || ''));
+    setPropOwnerPhone(String(prop.ownerPhone || ''));
+    setPropKeyLocation(String(prop.keyLocation || ''));
+    setPropTpNumber(String(prop.tpNumber || 'TP-14'));
+    setPropFpNumber(String(prop.fpNumber || 'FP-82'));
+    setPropSurveyNumber(String(prop.surveyNumber || ''));
+    setPropRudaZone(String(prop.rudaZone || 'R1 - Residential Zone'));
+    setPropStatus(String(prop.status || 'Available'));
+    setPropPublicNotes(String(prop.publicNotes || ''));
+    setPropPrivateVaultNotes(String(prop.privateVaultNotes || ''));
     setCapturedPhotoUrl(prop.photoUrl || '');
     setShowAdvancedFields(true);
     setActiveTab('capture');
@@ -943,12 +1066,12 @@ Return strictly valid JSON with keys:
     const idToUse = editingBuyerId || `buyer-${Date.now()}`;
     const newBuyer = {
       id: idToUse,
-      name: newBuyerName || 'Walk-in Buyer',
-      phone: newBuyerPhone || '98250XXXXX',
-      preferredArea: newBuyerArea,
+      name: String(newBuyerName || 'Walk-in Buyer'),
+      phone: String(newBuyerPhone || '98250XXXXX'),
+      preferredArea: String(newBuyerArea),
       budgetMax: Number(newBuyerBudget) || 8500000,
-      minBhk: newBuyerBhk,
-      requirementText: newBuyerReq || `Looking for ${newBuyerBhk} in ${newBuyerArea} under ${formatPriceIndian(newBuyerBudget)}`,
+      minBhk: String(newBuyerBhk || '3 BHK'),
+      requirementText: String(newBuyerReq || `Looking for ${newBuyerBhk} in ${newBuyerArea} under ${formatPriceIndian(newBuyerBudget)}`),
       createdAt: new Date().toISOString()
     };
 
@@ -979,59 +1102,53 @@ Return strictly valid JSON with keys:
     const reader = new FileReader();
     reader.onload = async (ev) => {
       const base64Data = ev.target.result;
-      if (getResolvedGeminiKey(customGeminiKey)) {
-        try {
-          const res = await callGeminiStructuredAI({
-            prompt: `Analyze this Gujarat 7/12 or 8A revenue record (Satbara Utara). Extract JSON with keys: surveyNo (string), tpScheme (string), fpNo (string), khatedar (string), rudaZone (string), bojaStatus (string), hectare (number), are (number), sqMt (number).`,
-            inlineMimeType: file.type || 'image/jpeg',
-            inlineBase64: base64Data,
-            customKey: customGeminiKey
-          });
-          setUtaraScannedData({
-            surveyNo: res.surveyNo || '214/P1',
-            tpScheme: res.tpScheme || 'TP-14 (Kalawad)',
-            fpNo: res.fpNo || 'FP-82',
-            khatedar: res.khatedar || 'Rameshbhai Patel',
-            rudaZone: res.rudaZone || 'R1 Residential Zone',
-            bojaStatus: res.bojaStatus || 'Clear Title'
-          });
-          if (res.hectare !== undefined) setUtaraHectare(String(res.hectare));
-          if (res.are !== undefined) setUtaraAre(String(res.are));
-          if (res.sqMt !== undefined) setUtaraSqMt(String(res.sqMt));
-          showToast("7/12 Utara Scanned with Gemini Vision AI!");
-        } catch (err) {
-          showToast("7/12 Utara Record Loaded!");
-        }
-      } else {
-        showToast("7/12 Utara Record Loaded!");
+      try {
+        const res = await callGeminiStructuredAI({
+          prompt: `Analyze this Gujarat 7/12 or 8A revenue record (Satbara Utara). Extract JSON with keys: surveyNo (string), tpScheme (string), fpNo (string), khatedar (string), rudaZone (string), bojaStatus (string), hectare (number), are (number), sqMt (number).`,
+          inlineMimeType: file.type || 'image/jpeg',
+          inlineBase64: base64Data,
+          customKey: customGeminiKey
+        });
+        setUtaraScannedData({
+          surveyNo: res.surveyNo || '214/P1',
+          tpScheme: res.tpScheme || 'TP-14 (Kalawad)',
+          fpNo: res.fpNo || 'FP-82',
+          khatedar: res.khatedar || 'Rameshbhai Patel',
+          rudaZone: res.rudaZone || 'R1 Residential Zone',
+          bojaStatus: res.bojaStatus || 'Clear Title'
+        });
+        if (res.hectare !== undefined) setUtaraHectare(String(res.hectare));
+        if (res.are !== undefined) setUtaraAre(String(res.are));
+        if (res.sqMt !== undefined) setUtaraSqMt(String(res.sqMt));
+        showToast("7/12 Utara Scanned with Gemini Vision AI!");
+      } catch (err) {
+        showToast(`7/12 Utara Loaded! (${err.message.slice(0, 50)})`);
+      } finally {
+        setIsScanningUtara(false);
       }
-      setIsScanningUtara(false);
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   // ============================================================================
-  // 5. 1-TAP CLEAR PWA CACHE & SERVICE WORKER HARD RESET (Preserves Cloud Data)
+  // 5. 1-TAP CLEAR PWA CACHE & SERVICE WORKER HARD RESET
   // ============================================================================
   const handleClearPwaCacheAndReload = async () => {
     showToast("Clearing PWA Service Worker & Browser Cache...");
     try {
-      // 1. Unregister all Service Workers
       if ('serviceWorker' in navigator) {
         const registrations = await navigator.serviceWorker.getRegistrations();
         for (const reg of registrations) {
           await reg.unregister();
         }
       }
-      // 2. Delete all CacheStorage buckets
       if ('caches' in window) {
         const cacheKeys = await window.caches.keys();
         await Promise.all(cacheKeys.map(key => window.caches.delete(key)));
       }
-      // 3. Clear sessionStorage
       try { window.sessionStorage.clear(); } catch (e) {}
 
-      // 4. Force cache-busted reload from server
       setTimeout(() => {
         const cleanUrl = window.location.origin + window.location.pathname + '?v=' + Date.now();
         window.location.replace(cleanUrl);
@@ -1039,141 +1156,6 @@ Return strictly valid JSON with keys:
     } catch (err) {
       window.location.reload();
     }
-  };
-
-  // ============================================================================
-  // 6. FULL GITHUB & VERCEL .ZIP EXPORTER (Exports 100% Complete App.jsx)
-  // ============================================================================
-  const downloadFullGitHubZip = async () => {
-    showToast("Packaging Full Production GitHub & Vercel .ZIP...");
-    try {
-      if (!window.JSZip) {
-        await new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
-      }
-
-      const zip = new window.JSZip();
-
-      // 1. package.json
-      zip.file(
-        'package.json',
-        JSON.stringify(
-          {
-            name: 'radhika-estate-agency-crm',
-            private: true,
-            version: '3.0.0',
-            type: 'module',
-            scripts: {
-              dev: 'vite',
-              build: 'vite build',
-              preview: 'vite preview'
-            },
-            dependencies: {
-              firebase: '^10.13.1',
-              'lucide-react': '^0.436.0',
-              react: '^18.3.1',
-              'react-dom': '^18.3.1'
-            },
-            devDependencies: {
-              '@vitejs/plugin-react': '^4.3.1',
-              autoprefixer: '^10.4.20',
-              postcss: '^8.4.41',
-              tailwindcss: '^3.4.10',
-              vite: '^5.4.2'
-            }
-          },
-          null,
-          2
-        )
-      );
-
-      // 2. vite.config.js
-      zip.file(
-        'vite.config.js',
-        `import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [react()],\n});\n`
-      );
-
-      // 3. postcss.config.js (Crucial so Tailwind compiles on Vercel)
-      zip.file(
-        'postcss.config.js',
-        `export default {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n};\n`
-      );
-
-      // 4. tailwind.config.js
-      zip.file(
-        'tailwind.config.js',
-        `/** @type {import('tailwindcss').Config} */\nexport default {\n  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],\n  theme: {\n    extend: {},\n  },\n  plugins: [],\n};\n`
-      );
-
-      // 5. index.html
-      zip.file(
-        'index.html',
-        `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />\n    <meta name="mobile-web-app-capable" content="yes" />\n    <meta name="theme-color" content="#3D4043" />\n    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />\n    <link rel="manifest" href="/manifest.json" />\n    <title>Radhika Estate Agency — Rajkot Field CRM & Deal OS</title>\n  </head>\n  <body class="bg-[#3D4043]/5 text-[#3D4043] antialiased">\n    <div id="root"></div>\n    <script type="module" src="/src/main.jsx"></script>\n  </body>\n</html>\n`
-      );
-
-      // 6. public/favicon.svg
-      zip.file(
-        'public/favicon.svg',
-        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="#3D4043"/><polygon points="20,80 50,30 80,80" fill="#EA9E24"/></svg>`
-      );
-
-      // 7. public/manifest.json
-      zip.file(
-        'public/manifest.json',
-        JSON.stringify(
-          {
-            short_name: 'RadhikaCRM',
-            name: 'Radhika Estate Agency — Rajkot Deal OS',
-            start_url: '/',
-            display: 'standalone',
-            background_color: '#FFFFFF',
-            theme_color: '#EA9E24'
-          },
-          null,
-          2
-        )
-      );
-
-      // 8. src/index.css
-      zip.file(
-        'src/index.css',
-        `@tailwind base;\n@tailwind components;\n@tailwind utilities;\n`
-      );
-
-      // 9. src/main.jsx
-      zip.file(
-        'src/main.jsx',
-        `import React from 'react';\nimport ReactDOM from 'react-dom/client';\nimport App from './App.jsx';\nimport './index.css';\n\nReactDOM.createRoot(document.getElementById('root')).render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>\n);\n`
-      );
-
-      // 10. README.md with 10-second GitHub update check
-      zip.file(
-        'README.md',
-        `# Radhika Estate Agency — Rajkot Field CRM & Deal OS (v4.0 Executive)\n\n### How to Update Your Live Vercel App:\n1. Open \`src/App.jsx\` inside your GitHub repository: https://github.com/abhiraichura/radhika-estate-crm/blob/main/src/App.jsx\n2. Click the Pencil (Edit) icon in GitHub.\n3. Click the **Copy** button in the top-right corner of the Canvas code editor and paste the entire code into \`src/App.jsx\` on GitHub.\n4. Click **Commit changes** — Vercel will deploy v4.0 Executive in 20 seconds.\n`
-      );
-
-      const content = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(content);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'Radhika_Estate_Agency_v4_Config.zip';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      showToast("Config ZIP Downloaded! Now copy-paste App.jsx into src/App.jsx on GitHub.");
-    } catch (err) {
-      console.error("ZIP error:", err);
-    }
-  };
-
-  // One-Tap Copy Full Source Helper for GitHub src/App.jsx
-  const copyChecklistForGitHub = () => {
-    showToast("Use the 'Copy' button in the top-right corner of the code editor and paste into src/App.jsx on GitHub!");
   };
 
   // Calculate 7/12 Utara Total Sq.Mt & Saurashtra Vaar
@@ -1245,11 +1227,15 @@ Return strictly valid JSON with keys:
 
           <div className="flex items-center gap-2">
             {/* Cloud + AI Status Pill */}
-            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-[#3D4043] text-[#FFFFFF] rounded-xl text-[11px] font-bold">
+            <div
+              onClick={() => setActiveTab('tools')}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-[#3D4043] text-[#FFFFFF] rounded-xl text-[11px] font-bold cursor-pointer"
+              title="Tap to configure AI or clear PWA cache"
+            >
               <Cloud className="w-3.5 h-3.5 text-[#EA9E24]" />
-              <span>v4.0 • {cloudSynced ? 'Cloud Synced' : 'Cloud Live'}</span>
+              <span>v4.2 • {cloudSynced ? 'Cloud Synced' : 'Cloud Live'}</span>
               <span className="text-[#EA9E24]">•</span>
-              <span>{hasGeminiKeyActive ? 'AI Active' : 'AI Ready'}</span>
+              <span>{hasGeminiKeyActive ? 'AI Connected' : 'Set AI Key'}</span>
             </div>
 
             {/* Client Safe Mode Toggle */}
@@ -1339,7 +1325,7 @@ Return strictly valid JSON with keys:
                   {editingPropId ? 'Edit Property Listing' : 'Capture New Rajkot Property'}
                 </h1>
                 <p className="text-xs text-[#FFFFFF]/80 mt-0.5">
-                  Snap a photo & speak naturally in Gujarati, Hindi, or English — Gemini 2.5 Flash fills the database automatically.
+                  Snap a camera photo OR upload from gallery, and speak or type in Gujarati/Hindi/English — AI auto-fills the form.
                 </p>
               </div>
               {editingPropId && (
@@ -1348,6 +1334,7 @@ Return strictly valid JSON with keys:
                     setEditingPropId(null);
                     setPropTitle('');
                     setCapturedPhotoUrl('');
+                    setRawPhotoBase64('');
                   }}
                   className="px-4 py-2 bg-[#EA9E24] text-[#FFFFFF] text-xs font-extrabold rounded-xl"
                 >
@@ -1403,85 +1390,154 @@ Return strictly valid JSON with keys:
                 </div>
               </div>
 
-              {/* 2 BIG EXECUTIVE ACTION CARDS: PHOTO & VOICE AI */}
+              {/* 2 BIG EXECUTIVE ACTION CARDS: PHOTO (CAMERA + GALLERY) & VOICE/TEXT AI */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Card 1: Take / Upload Photo */}
-                <div className="bg-[#FFFFFF] border-2 border-[#3D4043]/15 hover:border-[#EA9E24] rounded-2xl p-5 text-center flex flex-col items-center justify-center shadow-xs transition-all">
+                
+                {/* Card 1: Snap Camera OR Upload Photo from Gallery */}
+                <div className="bg-[#FFFFFF] border-2 border-[#3D4043]/15 hover:border-[#EA9E24] rounded-2xl p-5 text-center flex flex-col items-center justify-between shadow-xs transition-all">
+                  {/* Input 1: Direct Mobile Camera */}
                   <input
-                    ref={photoInputRef}
+                    ref={cameraInputRef}
                     type="file"
                     accept="image/*"
                     capture="environment"
                     onChange={handlePhotoSelect}
                     className="hidden"
                   />
+                  {/* Input 2: Standard Photo Gallery / File Picker (NO capture attribute) */}
+                  <input
+                    ref={galleryInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePhotoSelect}
+                    className="hidden"
+                  />
+
                   {capturedPhotoUrl ? (
-                    <div className="relative w-full h-48 rounded-xl overflow-hidden shadow-xs border border-[#3D4043]/15">
-                      <img src={capturedPhotoUrl} alt="Captured property" className="w-full h-full object-cover" />
-                      <div className="absolute bottom-2 left-2 bg-[#3D4043]/95 text-[#FFFFFF] text-[10px] px-2.5 py-1 rounded-lg font-mono">
-                        {photoFileName || 'RJT_STAMPED.jpg'}
+                    <div className="w-full space-y-3">
+                      <div className="relative w-full h-44 rounded-xl overflow-hidden shadow-xs border border-[#3D4043]/15">
+                        <img src={capturedPhotoUrl} alt="Captured property" className="w-full h-full object-cover" />
+                        <div className="absolute bottom-2 left-2 bg-[#3D4043]/95 text-[#FFFFFF] text-[10px] px-2.5 py-1 rounded-lg font-mono">
+                          {photoFileName || 'RJT_STAMPED.jpg'}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCapturedPhotoUrl('');
+                            setRawPhotoBase64('');
+                          }}
+                          className="absolute top-2 right-2 bg-[#3D4043] text-[#FFFFFF] p-1.5 rounded-xl shadow"
+                          title="Remove photo"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => photoInputRef.current && photoInputRef.current.click()}
-                        className="absolute top-2 right-2 bg-[#EA9E24] text-[#FFFFFF] p-2 rounded-xl shadow"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </button>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
+                          className="py-2 px-2 bg-[#3D4043]/10 text-[#3D4043] rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1"
+                        >
+                          <Camera className="w-3.5 h-3.5" />
+                          <span>Retake</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => galleryInputRef.current && galleryInputRef.current.click()}
+                          className="py-2 px-2 bg-[#3D4043]/10 text-[#3D4043] rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Gallery</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isAiProcessing}
+                          onClick={() => runPhotoVisionAI()}
+                          className="py-2 px-2 bg-[#EA9E24] text-[#FFFFFF] rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>{isAiProcessing ? 'Scanning...' : 'AI Scan'}</span>
+                        </button>
+                      </div>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => photoInputRef.current && photoInputRef.current.click()}
-                      disabled={capturingPhoto}
-                      className="w-full py-5 flex flex-col items-center justify-center text-[#3D4043] group"
-                    >
-                      <div className="w-16 h-16 rounded-2xl bg-[#3D4043] text-[#EA9E24] flex items-center justify-center mb-3 shadow-sm group-hover:scale-105 transition-transform">
-                        <Camera className="w-8 h-8" />
+                    <div className="w-full py-2 flex flex-col items-center justify-center">
+                      <div className="w-14 h-14 rounded-2xl bg-[#3D4043] text-[#EA9E24] flex items-center justify-center mb-3 shadow-sm">
+                        <Camera className="w-7 h-7" />
                       </div>
                       <span className="font-extrabold text-base text-[#3D4043]">
-                        {capturingPhoto ? 'Stamping Radhika Watermark...' : '1. Take / Upload Property Photo'}
+                        {capturingPhoto ? 'Stamping Radhika Watermark...' : '1. Property Photo & Vision AI'}
                       </span>
-                      <span className="text-xs text-[#3D4043]/70 mt-1">
+                      <span className="text-xs text-[#3D4043]/70 mt-1 mb-4">
                         Auto-stamps Unique ID, Date, Time & runs Gemini Vision OCR
                       </span>
-                    </button>
+
+                      <div className="grid grid-cols-2 gap-2.5 w-full">
+                        <button
+                          type="button"
+                          onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
+                          disabled={capturingPhoto}
+                          className="py-3 px-3 bg-[#3D4043] text-[#FFFFFF] rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-xs hover:opacity-95"
+                        >
+                          <Camera className="w-4 h-4 text-[#EA9E24]" />
+                          <span>Snap Camera</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => galleryInputRef.current && galleryInputRef.current.click()}
+                          disabled={capturingPhoto}
+                          className="py-3 px-3 bg-[#EA9E24] text-[#FFFFFF] rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-xs hover:opacity-95"
+                        >
+                          <Upload className="w-4 h-4" />
+                          <span>Upload Photo</span>
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
 
-                {/* Card 2: Speak Property Details (Real Microphone + Gemini AI) */}
-                <div className="bg-[#FFFFFF] border-2 border-[#3D4043]/15 hover:border-[#EA9E24] rounded-2xl p-5 text-center flex flex-col items-center justify-center shadow-xs transition-all">
-                  <button
-                    type="button"
-                    onClick={toggleRecordVoice}
-                    className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-3 shadow-sm transition-transform ${
-                      isRecording
-                        ? 'bg-[#EA9E24] text-[#FFFFFF] animate-pulse scale-105'
-                        : 'bg-[#3D4043] text-[#EA9E24] hover:scale-105'
-                    }`}
-                  >
-                    <Mic className="w-8 h-8" />
-                  </button>
-                  <span className="font-extrabold text-base text-[#3D4043]">
-                    {isRecording
-                      ? 'Recording Live... Tap to Stop & Auto-Fill'
-                      : isAiProcessing
-                      ? 'Gemini 2.5 Flash Extracting Fields...'
-                      : '2. Speak Property Details (Mic)'}
-                  </span>
-                  <p className="text-xs text-[#3D4043]/75 mt-1 px-2 line-clamp-2">
-                    {audioTranscript || 'Say: "3 BHK flat Kalawad Road, 150 Vaar, 78 Lakhs, East facing, Rameshbhai"'}
-                  </p>
-                  {audioTranscript && !isRecording && (
+                {/* Card 2: Speak OR Paste Property Details (Real Mic + Interactive AI Box) */}
+                <div className="bg-[#FFFFFF] border-2 border-[#3D4043]/15 hover:border-[#EA9E24] rounded-2xl p-5 flex flex-col justify-between shadow-xs transition-all">
+                  <div className="flex flex-col items-center text-center">
                     <button
                       type="button"
-                      onClick={() => runGeminiOnTextOrAudio({ transcriptText: audioTranscript })}
-                      className="mt-2 px-3 py-1 bg-[#EA9E24]/15 text-[#3D4043] rounded-lg text-[11px] font-extrabold flex items-center gap-1"
+                      onClick={toggleRecordVoice}
+                      className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-2.5 shadow-sm transition-transform ${
+                        isRecording
+                          ? 'bg-[#EA9E24] text-[#FFFFFF] animate-pulse scale-105'
+                          : 'bg-[#3D4043] text-[#EA9E24] hover:scale-105'
+                      }`}
                     >
-                      <Sparkles className="w-3 h-3 text-[#EA9E24]" />
-                      <span>Re-Run AI Field Extraction</span>
+                      <Mic className="w-7 h-7" />
                     </button>
-                  )}
+                    <span className="font-extrabold text-base text-[#3D4043]">
+                      {isRecording
+                        ? 'Recording Live... Tap Mic to Stop & Extract'
+                        : isAiProcessing
+                        ? 'Gemini AI Extracting Fields...'
+                        : '2. Speak or Paste Property Note'}
+                    </span>
+                  </div>
+
+                  <div className="w-full mt-3 space-y-2">
+                    <textarea
+                      rows={2}
+                      value={audioTranscript}
+                      onChange={(e) => setAudioTranscript(e.target.value)}
+                      placeholder='Tap Mic to speak OR type/paste WhatsApp message here (e.g. "3 BHK flat Kalawad Road 150 Vaar 78 Lakh East facing Rameshbhai 9825012345")'
+                      className="w-full px-3 py-2 bg-[#3D4043]/5 rounded-xl text-xs font-bold text-[#3D4043] border border-[#3D4043]/15 focus:outline-none focus:border-[#EA9E24]"
+                    />
+                    <button
+                      type="button"
+                      disabled={isAiProcessing}
+                      onClick={() => runGeminiOnTextOrAudio({ transcriptText: audioTranscript })}
+                      className="w-full py-2.5 bg-[#EA9E24] text-[#FFFFFF] rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-xs hover:opacity-95"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>{isAiProcessing ? 'Running Gemini AI Extraction...' : 'AI Auto-Fill Fields from Note'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1750,7 +1806,7 @@ Return strictly valid JSON with keys:
                         </div>
                         <h3 className="font-extrabold text-base text-[#3D4043] mt-1">{prop.title}</h3>
                         <p className="text-xs font-extrabold text-[#EA9E24] mt-0.5">
-                          {formatPriceIndian(prop.priceQuoted)} • {prop.sizeSqFt} Sq.Ft ({prop.sizeVaar} Vaar) • {prop.bhk}
+                          {formatPriceIndian(prop.priceQuoted)} • {prop.sizeSqFt} Sq.Ft ({prop.sizeVaar} Vaar) • {String(prop.bhk)}
                         </p>
                         {prop.tpNumber && (
                           <p className="text-[11px] text-[#3D4043]/70 mt-0.5 font-medium">
@@ -1820,7 +1876,6 @@ Return strictly valid JSON with keys:
         {/* ================================================================ */}
         {activeTab === 'buyers' && (
           <div className="space-y-5">
-            {/* Instant AI Requirement Search & Compatibility Matcher */}
             <div className="bg-[#3D4043] text-[#FFFFFF] p-5 rounded-2xl border-l-4 border-[#EA9E24] space-y-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -1839,7 +1894,7 @@ Return strictly valid JSON with keys:
                   }`}
                 >
                   <Mic className="w-3.5 h-3.5 text-[#EA9E24]" />
-                  <span>{isBuyerVoiceRecording ? 'Listening...' : 'Speak Buyer Inquiry'}</span>
+                  <span>{isBuyerVoiceRecording ? 'Stop & Extract' : 'Speak Buyer Inquiry'}</span>
                 </button>
               </div>
               <div className="flex gap-2">
@@ -1858,14 +1913,12 @@ Return strictly valid JSON with keys:
                     Top Compatible Properties for "{buyerSearchQuery}":
                   </div>
                   {properties
-                    .filter((p) => {
-                      const q = String(buyerSearchQuery || '').toLowerCase();
-                      return (
-                        String(p?.title || '').toLowerCase().includes(q) ||
-                        String(p?.areaName || '').toLowerCase().includes(q) ||
-                        String(p?.bhk || '').toLowerCase().includes(q)
-                      );
-                    })
+                    .filter(
+                      p =>
+                        String(p?.title || '').toLowerCase().includes(buyerSearchQuery.toLowerCase()) ||
+                        String(p?.areaName || '').toLowerCase().includes(buyerSearchQuery.toLowerCase()) ||
+                        String(p?.bhk || '').toLowerCase().includes(buyerSearchQuery.toLowerCase())
+                    )
                     .map(mProp => (
                       <div key={mProp.id} className="flex items-center justify-between border-b border-[#3D4043]/10 pb-2 last:border-0 last:pb-0">
                         <div>
@@ -1980,11 +2033,11 @@ Return strictly valid JSON with keys:
                         <button
                           onClick={() => {
                             setEditingBuyerId(buyer.id);
-                            setNewBuyerName(buyer.name);
-                            setNewBuyerPhone(buyer.phone);
-                            setNewBuyerArea(buyer.preferredArea);
-                            setNewBuyerBudget(String(buyer.budgetMax));
-                            setNewBuyerReq(buyer.requirementText);
+                            setNewBuyerName(String(buyer.name || ''));
+                            setNewBuyerPhone(String(buyer.phone || ''));
+                            setNewBuyerArea(String(buyer.preferredArea || 'Kalawad Road'));
+                            setNewBuyerBudget(String(buyer.budgetMax || 8500000));
+                            setNewBuyerReq(String(buyer.requirementText || ''));
                           }}
                           className="px-2.5 py-1 bg-[#3D4043]/10 text-[#3D4043] rounded-lg text-xs font-bold"
                         >
@@ -2045,7 +2098,7 @@ Return strictly valid JSON with keys:
         )}
 
         {/* ================================================================ */}
-        {/* TAB 4: QUICK TOOLS (7/12 UTARA, VAAR, PAKKA HISAB, CACHE RESET)   */}
+        {/* TAB 4: QUICK TOOLS (7/12 UTARA, VAAR, PAKKA HISAB, AI KEY & CACHE)*/}
         {/* ================================================================ */}
         {activeTab === 'tools' && (
           <div className="space-y-4">
@@ -2055,7 +2108,7 @@ Return strictly valid JSON with keys:
                   Rajkot Deal Desk & System Utilities
                 </span>
                 <h1 className="text-lg font-extrabold">
-                  7/12 Utara, Saurashtra Vaar, Pakka Hisab & PWA Cache Manager
+                  7/12 Utara, Saurashtra Vaar, Pakka Hisab & AI / Cache Manager
                 </h1>
               </div>
               <button
@@ -2184,7 +2237,7 @@ Return strictly valid JSON with keys:
                 </p>
               </div>
 
-              {/* Card 3: Pakka Hisab (Gujarat Stamp Duty + Female Buyer Exemption + TDS) */}
+              {/* Card 3: Pakka Hisab */}
               <div className="bg-[#FFFFFF] border border-[#3D4043]/15 rounded-2xl p-5 space-y-3 shadow-xs">
                 <div className="flex items-center justify-between">
                   <span className="px-2.5 py-0.5 bg-[#EA9E24]/15 text-[#3D4043] rounded-md text-[10px] font-extrabold uppercase">
@@ -2257,36 +2310,51 @@ Return strictly valid JSON with keys:
               </div>
             </div>
 
-            {/* Card 5: PWA Cache Manager + Gemini Key Override + GitHub Exporter */}
+            {/* Card 5: Direct Cloud Gemini AI Key Manager + PWA Cache Reset */}
             <div className="bg-[#3D4043] text-[#FFFFFF] rounded-2xl p-5 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-[#EA9E24]">
-                    PWA System & AI Configuration
+                    Cloud AI Key & PWA Cache Manager
                   </span>
                   <h3 className="font-extrabold text-base">
-                    Clear PWA Cache, Gemini AI Key & GitHub Exporter
+                    Direct Gemini API Key Lock & Hard Cache Reset
                   </h3>
+                  <p className="text-xs text-[#FFFFFF]/75 mt-0.5">
+                    If Vercel didn't bundle your VITE_GEMINI_API_KEY, paste your Gemini API key once below — it locks into your Firebase Cloud Database automatically so Voice & Photo AI work across all your devices.
+                  </p>
                 </div>
-                <Download className="w-6 h-6 text-[#EA9E24]" />
+                <Sparkles className="w-6 h-6 text-[#EA9E24]" />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="password"
+                  value={customGeminiKey}
+                  onChange={(e) => setCustomGeminiKey(e.target.value)}
+                  placeholder={hasGeminiKeyActive ? "Gemini API Key Active (Paste new key to override)..." : "Paste your AIzaSy... Gemini API Key here"}
+                  className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#FFFFFF] text-[#3D4043] text-xs font-bold focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleSaveCustomGeminiKey(customGeminiKey)}
+                  className="px-5 py-2.5 bg-[#EA9E24] text-[#FFFFFF] text-xs font-extrabold rounded-xl"
+                >
+                  Save Gemini Key to Cloud
+                </button>
+              </div>
+
+              <div className="pt-2 border-t border-[#FFFFFF]/15 flex flex-wrap items-center justify-between gap-3">
+                <span className="text-xs text-[#FFFFFF]/80">
+                  Status: <strong>{hasGeminiKeyActive ? 'Gemini AI Connected & Ready' : 'Waiting for Gemini Key'}</strong>
+                </span>
                 <button
                   type="button"
                   onClick={handleClearPwaCacheAndReload}
-                  className="py-3 px-4 bg-[#FFFFFF] text-[#3D4043] text-xs font-extrabold rounded-xl flex items-center justify-center gap-2"
+                  className="py-2.5 px-4 bg-[#FFFFFF] text-[#3D4043] text-xs font-extrabold rounded-xl flex items-center justify-center gap-2"
                 >
                   <RefreshCw className="w-4 h-4 text-[#EA9E24]" />
                   <span>Clear PWA Cache & Force Hard Reload</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={copyChecklistForGitHub}
-                  className="py-3 px-4 bg-[#EA9E24] text-[#FFFFFF] text-xs font-extrabold rounded-xl flex items-center justify-center gap-2"
-                >
-                  <Upload className="w-4 h-4" />
-                  <span>How to Update Live Vercel UI (src/App.jsx)</span>
                 </button>
               </div>
             </div>
@@ -2380,7 +2448,7 @@ Return strictly valid JSON with keys:
               onClick={() => utaraPhotoInputRef.current && utaraPhotoInputRef.current.click()}
               className="w-full py-2.5 bg-[#3D4043] text-[#FFFFFF] text-xs font-extrabold rounded-xl flex items-center justify-center gap-2"
             >
-              <Camera className="w-4 h-4 text-[#EA9E24]" />
+              <Upload className="w-4 h-4 text-[#EA9E24]" />
               <span>{isScanningUtara ? 'Scanning 7/12 Utara with Gemini AI...' : 'Upload / Scan 7/12 Utara Photo (AI OCR)'}</span>
             </button>
 

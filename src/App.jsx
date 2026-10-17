@@ -143,7 +143,7 @@ export default function App() {
     "privateVaultNotes": "Owner shifting to Ahmedabad urgently. Bottom price 73.5L possible.",
     "photoUrl": "",
     "status": "Available",
-    "createdAt": "2026-10-17T07:52:01.348Z"
+    "createdAt": "2026-10-17T08:27:39.578Z"
   },
   {
     "id": "prop-2",
@@ -168,7 +168,7 @@ export default function App() {
     "privateVaultNotes": "Clear title, loan running with SBI Rs 40L. Brokerage 2% fixed.",
     "photoUrl": "",
     "status": "Available",
-    "createdAt": "2026-10-17T07:52:01.348Z"
+    "createdAt": "2026-10-17T08:27:39.578Z"
   }
 ]);
   const [buyers, setBuyers] = useState([
@@ -180,7 +180,7 @@ export default function App() {
     "budgetMax": 8500000,
     "preferredArea": "Kalawad Road",
     "minBhk": "3 BHK",
-    "createdAt": "2026-10-17T07:52:01.348Z"
+    "createdAt": "2026-10-17T08:27:39.578Z"
   },
   {
     "id": "buyer-2",
@@ -190,7 +190,7 @@ export default function App() {
     "budgetMax": 16000000,
     "preferredArea": "150 Ft Ring Road",
     "minBhk": "Commercial",
-    "createdAt": "2026-10-17T07:52:01.348Z"
+    "createdAt": "2026-10-17T08:27:39.578Z"
   }
 ]);
   const [customLogoUrl, setCustomLogoUrl] = useState('');

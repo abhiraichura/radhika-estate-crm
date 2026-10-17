@@ -819,19 +819,26 @@ Return strictly valid JSON with keys:
     }
   };
 
-  // Compute Matching Score Between a Property and a Buyer
+  // Compute Matching Score Between a Property and a Buyer (Safe against numeric/null Firestore fields)
   const calculateMatchScore = (prop, buyer) => {
     let score = 62;
     const reasons = [];
-    if (buyer.preferredArea && prop.areaName && prop.areaName.toLowerCase().includes(buyer.preferredArea.toLowerCase())) {
+    const propAreaStr = String(prop?.areaName || '').toLowerCase();
+    const buyerAreaStr = String(buyer?.preferredArea || '').toLowerCase();
+    const propBhkStr = String(prop?.bhk || '').toLowerCase();
+    const buyerBhkStr = String(buyer?.minBhk || '').toLowerCase();
+    const propPriceNum = Number(prop?.priceQuoted || 0);
+    const buyerBudgetNum = Number(buyer?.budgetMax || 0);
+
+    if (buyerAreaStr && propAreaStr && propAreaStr.includes(buyerAreaStr)) {
       score += 22;
       reasons.push(`Exact Area (${prop.areaName})`);
     }
-    if (buyer.budgetMax && prop.priceQuoted <= buyer.budgetMax * 1.08) {
+    if (buyerBudgetNum > 0 && propPriceNum <= buyerBudgetNum * 1.08) {
       score += 11;
-      reasons.push(`Fits Budget (${formatPriceIndian(prop.priceQuoted)})`);
+      reasons.push(`Fits Budget (${formatPriceIndian(propPriceNum)})`);
     }
-    if (buyer.minBhk && prop.bhk && prop.bhk.toLowerCase().includes(buyer.minBhk.toLowerCase())) {
+    if (buyerBhkStr && propBhkStr && propBhkStr.includes(buyerBhkStr)) {
       score += 4;
       reasons.push(`Matches ${prop.bhk}`);
     }
@@ -1851,12 +1858,14 @@ Return strictly valid JSON with keys:
                     Top Compatible Properties for "{buyerSearchQuery}":
                   </div>
                   {properties
-                    .filter(
-                      p =>
-                        p.title.toLowerCase().includes(buyerSearchQuery.toLowerCase()) ||
-                        p.areaName.toLowerCase().includes(buyerSearchQuery.toLowerCase()) ||
-                        p.bhk.toLowerCase().includes(buyerSearchQuery.toLowerCase())
-                    )
+                    .filter((p) => {
+                      const q = String(buyerSearchQuery || '').toLowerCase();
+                      return (
+                        String(p?.title || '').toLowerCase().includes(q) ||
+                        String(p?.areaName || '').toLowerCase().includes(q) ||
+                        String(p?.bhk || '').toLowerCase().includes(q)
+                      );
+                    })
                     .map(mProp => (
                       <div key={mProp.id} className="flex items-center justify-between border-b border-[#3D4043]/10 pb-2 last:border-0 last:pb-0">
                         <div>
@@ -2016,7 +2025,7 @@ Return strictly valid JSON with keys:
                             </p>
                           </div>
                           <a
-                            href={`https://wa.me/91${buyer.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                            href={`https://wa.me/91${String(buyer?.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(
                               `Namaste ${buyer.name},\n\nWe have a verified property matching your requirement:\n*${prop.title}*\n📍 Area: ${prop.areaName}\n📐 Size: ${prop.sizeSqFt} Sq.Ft (${prop.sizeVaar} Vaar)\n💰 Asking: ${formatPriceIndian(prop.priceQuoted)}\n\n— *Radhika Estate Agency, Rajkot*`
                             )}`}
                             target="_blank"
@@ -2324,7 +2333,7 @@ Return strictly valid JSON with keys:
                       </p>
                     </div>
                     <a
-                      href={`https://wa.me/91${b.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                      href={`https://wa.me/91${String(b?.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(
                         `Namaste ${b.name},\n\nNew listing at *Radhika Estate Agency* matching your requirement:\n*${reverseMatchModalProp.title}*\n📍 Area: ${reverseMatchModalProp.areaName}\n📐 Size: ${reverseMatchModalProp.sizeSqFt} Sq.Ft (${reverseMatchModalProp.sizeVaar} Vaar)\n💰 Price: ${formatPriceIndian(reverseMatchModalProp.priceQuoted)}`
                       )}`}
                       target="_blank"

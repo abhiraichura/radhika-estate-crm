@@ -20,6 +20,8 @@ import {
   getFirestore,
   collection,
   doc,
+  getDoc,
+  getDocs,
   setDoc,
   deleteDoc,
   onSnapshot
@@ -323,6 +325,33 @@ function generatePhotoFileName(areaCode = 'KLWD') {
   const ss = String(now.getSeconds()).padStart(2, '0');
   const randHash = Math.random().toString(36).substring(2, 5).toUpperCase();
   return `RJT_${areaCode}_${yyyy}${mm}${dd}_${hh}${min}${ss}_${randHash}.jpg`;
+}
+
+// Guarantees every photo/logo stays well under Firestore's 1MB document limit
+function compressImageDataUrl(sourceDataUrl, maxWidth = 840, quality = 0.72) {
+  return new Promise((resolve) => {
+    if (!sourceDataUrl) {
+      resolve('');
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const scale = Math.min(1, maxWidth / img.width);
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      let compressed = canvas.toDataURL('image/jpeg', quality);
+      // Secondary safety pass if still > 650KB
+      if (compressed.length > 650000) {
+        compressed = canvas.toDataURL('image/jpeg', 0.52);
+      }
+      resolve(compressed);
+    };
+    img.onerror = () => resolve(sourceDataUrl);
+    img.src = sourceDataUrl;
+  });
 }
 
 function safeParseJsonFromText(rawText) {
@@ -700,12 +729,15 @@ export default function App() {
   const [clientViewMode, setClientViewMode] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [cloudSynced, setCloudSynced] = useState(false);
+  const [syncStatusText, setSyncStatusText] = useState('Connecting Cloud...');
+  const [cloudErrorMsg, setCloudErrorMsg] = useState('');
   const [dynamicIslandMsg, setDynamicIslandMsg] = useState('');
   const [customGeminiKey, setCustomGeminiKey] = useState('');
 
-  // Cloud Data Collections
-  const [properties, setProperties] = useState(getDefaultSampleProperties());
-  const [buyers, setBuyers] = useState(getDefaultSampleBuyers());
+  // Cloud Data Collections (Strictly driven by real-time Firestore snapshot)
+  const [properties, setProperties] = useState([]);
+  const [buyers, setBuyers] = useState([]);
+  const [isLoadingCloud, setIsLoadingCloud] = useState(true);
   const [customLogoUrl, setCustomLogoUrl] = useState('');
 
   // Filters for Portfolio
@@ -812,7 +844,7 @@ export default function App() {
   };
 
   // ============================================================================
-  // 1. FIREBASE AUTHENTICATION & FIRESTORE REAL-TIME SYNC
+  // 1. FIREBASE AUTHENTICATION & SHARED MULTI-DEVICE FIRESTORE SYNC
   // ============================================================================
   useEffect(() => {
     const initAuth = async () => {
@@ -822,7 +854,10 @@ export default function App() {
         } else {
           await signInAnonymously(auth);
         }
-      } catch (err) {}
+      } catch (err) {
+        setCloudErrorMsg(`Auth Error: ${err.message}`);
+        setIsLoadingCloud(false);
+      }
     };
     initAuth();
 
@@ -835,38 +870,108 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
 
-    const propsColRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'properties');
+    // Shared public agency collections so Mobile & Web sync to the exact same database
+    const sharedPropsCol = collection(db, 'artifacts', appId, 'public', 'data', 'properties');
+    const sharedBuyersCol = collection(db, 'artifacts', appId, 'public', 'data', 'buyers');
+    const sharedSettingsCol = collection(db, 'artifacts', appId, 'public', 'data', 'settings');
+    const systemMetaDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'systemMeta');
+    const brandDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'brand');
+
+    // One-time initialization: migrate any isolated per-device data & seed defaults only once ever
+    const bootstrapSharedDatabase = async () => {
+      try {
+        // 1. Rescue any properties/buyers created under the old device-only path
+        const legacyUserPropsCol = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'properties');
+        const legacyPropsSnap = await getDocs(legacyUserPropsCol);
+        if (!legacyPropsSnap.empty) {
+          for (const d of legacyPropsSnap.docs) {
+            const data = d.data();
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'properties', d.id), data, { merge: true });
+            await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'properties', d.id));
+          }
+        }
+
+        const legacyUserBuyersCol = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'buyers');
+        const legacyBuyersSnap = await getDocs(legacyUserBuyersCol);
+        if (!legacyBuyersSnap.empty) {
+          for (const d of legacyBuyersSnap.docs) {
+            const data = d.data();
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'buyers', d.id), data, { merge: true });
+            await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'buyers', d.id));
+          }
+        }
+
+        // 2. Check if initial sample data was ever seeded in this project
+        const metaSnap = await getDoc(systemMetaDocRef);
+        if (!metaSnap.exists() || !metaSnap.data()?.initialSeedDone) {
+          const existingPropsSnap = await getDocs(sharedPropsCol);
+          if (existingPropsSnap.empty) {
+            for (const sampleProp of getDefaultSampleProperties()) {
+              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'properties', sampleProp.id), sampleProp);
+            }
+          }
+          const existingBuyersSnap = await getDocs(sharedBuyersCol);
+          if (existingBuyersSnap.empty) {
+            for (const sampleBuyer of getDefaultSampleBuyers()) {
+              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'buyers', sampleBuyer.id), sampleBuyer);
+            }
+          }
+          await setDoc(systemMetaDocRef, {
+            initialSeedDone: true,
+            seededAt: new Date().toISOString()
+          }, { merge: true });
+        }
+      } catch (err) {
+        console.error("Bootstrap check notice:", err);
+      }
+    };
+
+    bootstrapSharedDatabase();
+
+    // Real-time listener for Properties (Always reflects exact Firestore state, even if 0 items)
     const unsubProps = onSnapshot(
-      propsColRef,
+      sharedPropsCol,
       (snapshot) => {
         const list = [];
         snapshot.forEach((docSnap) => {
-          list.push({ id: docSnap.id, ...docSnap.data() });
+          const data = docSnap.data();
+          if (data && !data.deleted) {
+            list.push({ ...data, id: docSnap.id });
+          }
         });
-        if (list.length > 0) {
-          setProperties(list);
-        }
+        list.sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
+        setProperties(list);
         setCloudSynced(true);
+        setIsLoadingCloud(false);
+        setCloudErrorMsg('');
+        setSyncStatusText(`Live Synced (${list.length})`);
       },
-      () => {}
+      (err) => {
+        setCloudErrorMsg(`Firestore Sync Error: ${err.message}`);
+        setIsLoadingCloud(false);
+      }
     );
 
-    const buyersColRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'buyers');
+    // Real-time listener for Buyers
     const unsubBuyers = onSnapshot(
-      buyersColRef,
+      sharedBuyersCol,
       (snapshot) => {
         const list = [];
         snapshot.forEach((docSnap) => {
-          list.push({ id: docSnap.id, ...docSnap.data() });
+          const data = docSnap.data();
+          if (data && !data.deleted) {
+            list.push({ ...data, id: docSnap.id });
+          }
         });
-        if (list.length > 0) {
-          setBuyers(list);
-        }
+        list.sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
+        setBuyers(list);
       },
-      () => {}
+      (err) => {
+        setCloudErrorMsg(`Buyers Sync Error: ${err.message}`);
+      }
     );
 
-    const brandDocRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'settings', 'brand');
+    // Real-time listener for Brand & Gemini Key settings
     const unsubBrand = onSnapshot(
       brandDocRef,
       (docSnap) => {
@@ -890,16 +995,18 @@ export default function App() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = async (ev) => {
-      const dataUrl = ev.target.result;
-      setCustomLogoUrl(dataUrl);
+      const compressedLogo = await compressImageDataUrl(ev.target.result, 500, 0.85);
+      setCustomLogoUrl(compressedLogo);
       if (currentUser) {
         try {
-          await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'settings', 'brand'), {
-            logoDataUrl: dataUrl,
+          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'brand'), {
+            logoDataUrl: compressedLogo,
             updatedAt: new Date().toISOString()
           }, { merge: true });
-          notifyIsland("Original Brand Logo Locked to Cloud");
-        } catch (err) {}
+          notifyIsland("Original Brand Logo Synced Across All Devices");
+        } catch (err) {
+          setCloudErrorMsg(`Logo Save Failed: ${err.message}`);
+        }
       }
     };
     reader.readAsDataURL(file);
@@ -909,13 +1016,13 @@ export default function App() {
     setCustomGeminiKey(newKeyVal);
     if (currentUser) {
       try {
-        await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'settings', 'brand'), {
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'brand'), {
           geminiKey: newKeyVal.trim(),
           updatedAt: new Date().toISOString()
         }, { merge: true });
-        notifyIsland("Gemini Key Synced to Cloud Vault");
+        notifyIsland("Gemini Key Synced to Shared Cloud Vault");
       } catch (err) {
-        notifyIsland("Gemini Key Active for Session");
+        setCloudErrorMsg(`Key Save Failed: ${err.message}`);
       }
     } else {
       notifyIsland("Gemini Key Active for Session");
@@ -1130,10 +1237,10 @@ Return strictly valid JSON:
       const img = new Image();
       img.onload = async () => {
         const canvas = document.createElement('canvas');
-        const maxW = 1080;
+        const maxW = 840;
         const scale = Math.min(1, maxW / img.width);
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
@@ -1147,7 +1254,8 @@ Return strictly valid JSON:
         ctx.font = '11px monospace';
         ctx.fillText(`${filename} • ${new Date().toLocaleString('en-IN')}`, 18, canvas.height - 9);
 
-        const stampedDataUrl = canvas.toDataURL('image/jpeg', 0.88);
+        // Compressed to <250KB so Firestore never rejects mobile camera uploads
+        const stampedDataUrl = await compressImageDataUrl(canvas.toDataURL('image/jpeg', 0.74), 840, 0.72);
         setCapturedPhotoUrl(stampedDataUrl);
 
         await runPhotoVisionAI(rawDataUrl);
@@ -1411,8 +1519,7 @@ Return strictly valid JSON:
           };
           recorder.start();
           mediaRecorderRef.current = recorder;
-          return;
-        } catch (e) {
+        } catch (err) {
           setIsBuyerVoiceRecording(false);
           setShowBuyerFormModal(true);
         }
@@ -1425,39 +1532,64 @@ Return strictly valid JSON:
     }
   };
 
-  // Compatibility Score Engine
+  // Two-Way Matchmaker Scoring Engine
   const calculateMatchScore = (prop, buyer) => {
-    let score = 65;
+    let score = 60;
     const reasons = [];
-    const buyerAreaStr = String(buyer?.preferredArea || '').toLowerCase();
-    const propAreaStr = String(prop?.areaName || '').toLowerCase();
-    const buyerBhkStr = String(buyer?.minBhk || '').toLowerCase();
-    const propBhkStr = String(prop?.bhk || '').toLowerCase();
+    const propArea = String(prop?.areaName || '').toLowerCase();
+    const buyerArea = String(buyer?.preferredArea || '').toLowerCase();
+    const buyerReq = String(buyer?.requirementText || '').toLowerCase();
 
-    if (buyerAreaStr && propAreaStr && (propAreaStr.includes(buyerAreaStr) || buyerAreaStr.includes(propAreaStr.split(' ')[0]))) {
-      score += 20;
-      reasons.push(`Micro-Market (${prop.areaName})`);
+    if (
+      (propArea && buyerArea && propArea === buyerArea) ||
+      (propArea && buyerReq.includes(propArea.split(' ')[0]))
+    ) {
+      score += 22;
+      reasons.push(`Area Match (${prop.areaName})`);
     }
-    if (buyer?.budgetMax && Number(prop?.priceQuoted) <= Number(buyer.budgetMax) * 1.08) {
-      score += 10;
-      reasons.push(`Within Budget (${formatPriceIndian(prop.priceQuoted)})`);
+
+    const pQuoted = Number(prop?.priceQuoted) || 0;
+    const bMax = Number(buyer?.budgetMax) || 0;
+    if (pQuoted > 0 && bMax > 0) {
+      if (pQuoted <= bMax) {
+        score += 12;
+        reasons.push(`Within Budget (${formatPriceIndian(pQuoted)})`);
+      } else if (pQuoted <= bMax * 1.12) {
+        score += 6;
+        reasons.push('Negotiable Range');
+      } else {
+        score -= 18;
+      }
     }
-    if (buyerBhkStr && propBhkStr && propBhkStr.includes(buyerBhkStr)) {
-      score += 4;
+
+    const propBhkStr = String(prop?.bhk || '').toLowerCase();
+    const buyerBhkStr = String(buyer?.minBhk || '').toLowerCase();
+    if (propBhkStr && buyerBhkStr && (propBhkStr.includes(buyerBhkStr) || buyerBhkStr.includes(propBhkStr))) {
+      score += 6;
       reasons.push(`${prop.bhk}`);
     }
-    return { score: Math.min(99, score), reasons };
+
+    return {
+      score: Math.min(99, Math.max(40, score)),
+      reasons
+    };
   };
 
-  // CRUD Handlers
+  // CRUD Handlers — Guaranteed Multi-Device Cloud Persistence
   const handleSaveProperty = async (e) => {
     e.preventDefault();
     const idToUse = editingPropId || `prop-${Date.now()}`;
+    const existingProp = editingPropId ? properties.find(p => p.id === editingPropId) : null;
+
+    // Ensure photo is safely compressed below Firestore's 1MB limit
+    const safePhotoUrl = capturedPhotoUrl
+      ? await compressImageDataUrl(capturedPhotoUrl, 840, 0.72)
+      : '';
+
+    const nowIso = new Date().toISOString();
     const newProp = {
       id: idToUse,
-      uniqueCode: editingPropId
-        ? (properties.find(p => p.id === editingPropId)?.uniqueCode || generateUniquePropCode(selectedArea.code))
-        : generateUniquePropCode(selectedArea.code),
+      uniqueCode: existingProp?.uniqueCode || generateUniquePropCode(selectedArea.code),
       title: String(propTitle || `${propBhk} Residence at ${selectedArea.name}`),
       category: String(propCategory),
       areaName: String(selectedArea.name),
@@ -1477,10 +1609,12 @@ Return strictly valid JSON:
       status: String(propStatus || 'Available'),
       publicNotes: String(propPublicNotes || ''),
       privateVaultNotes: String(propPrivateVaultNotes || ''),
-      photoUrl: capturedPhotoUrl,
-      createdAt: new Date().toISOString()
+      photoUrl: safePhotoUrl,
+      createdAt: existingProp?.createdAt || nowIso,
+      updatedAt: nowIso
     };
 
+    // Optimistic UI update
     if (editingPropId) {
       setProperties(prev => prev.map(p => (p.id === editingPropId ? newProp : p)));
     } else {
@@ -1489,8 +1623,23 @@ Return strictly valid JSON:
 
     if (currentUser) {
       try {
-        await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'properties', idToUse), newProp, { merge: true });
-      } catch (err) {}
+        setSyncStatusText('Saving to Cloud...');
+        await setDoc(
+          doc(db, 'artifacts', appId, 'public', 'data', 'properties', idToUse),
+          newProp
+        );
+        // Mark initial seed done so defaults never re-trigger
+        await setDoc(
+          doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'systemMeta'),
+          { initialSeedDone: true, updatedAt: nowIso },
+          { merge: true }
+        );
+        setSyncStatusText('Live Synced ✓');
+        setCloudErrorMsg('');
+      } catch (err) {
+        setCloudErrorMsg(`Cloud Save Failed: ${err.message}`);
+        notifyIsland(`Cloud Error: ${err.message}`);
+      }
     }
 
     setEditingPropId(null);
@@ -1501,7 +1650,7 @@ Return strictly valid JSON:
     setAiExtractedSummaryPills([]);
     setActiveTab('properties');
     setReverseMatchModalProp(newProp);
-    notifyIsland(editingPropId ? "Listing Updated in Cloud" : "Saved & Matched with Buyers");
+    notifyIsland(editingPropId ? "Listing Synced to All Devices" : "Saved to Cloud & Matched Buyers");
   };
 
   const startEditProperty = (prop) => {
@@ -1532,18 +1681,36 @@ Return strictly valid JSON:
   };
 
   const deleteProperty = async (id) => {
-    setProperties(prev => prev.filter(p => p.id !== id));
+    const cleanId = String(id);
+    // Immediately remove from UI
+    setProperties(prev => prev.filter(p => p.id !== cleanId));
+
     if (currentUser) {
       try {
-        await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'properties', id));
-      } catch (err) {}
+        setSyncStatusText('Deleting from Cloud...');
+        // Ensure systemMeta knows seeding was already done so sample properties never resurrect
+        await setDoc(
+          doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'systemMeta'),
+          { initialSeedDone: true, updatedAt: new Date().toISOString() },
+          { merge: true }
+        );
+        // Permanently delete from shared public collection
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'properties', cleanId));
+        // Also delete from legacy user collection if it existed there
+        await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'properties', cleanId));
+        setSyncStatusText('Live Synced ✓');
+        notifyIsland("Permanently Deleted from Cloud Database");
+      } catch (err) {
+        setCloudErrorMsg(`Delete Error: ${err.message}`);
+        notifyIsland(`Cloud Delete Error: ${err.message}`);
+      }
     }
-    notifyIsland("Listing Removed");
   };
 
   const handleSaveBuyer = async (e) => {
     e.preventDefault();
     const idToUse = editingBuyerId || `buyer-${Date.now()}`;
+    const nowIso = new Date().toISOString();
     const newBuyer = {
       id: idToUse,
       name: String(newBuyerName || 'Walk-in Buyer'),
@@ -1552,7 +1719,8 @@ Return strictly valid JSON:
       budgetMax: Number(newBuyerBudget) || 9000000,
       minBhk: String(newBuyerBhk || '3 BHK'),
       requirementText: String(newBuyerReq || `Looking for ${newBuyerBhk} in ${newBuyerArea} under ${formatPriceIndian(newBuyerBudget)}`),
-      createdAt: new Date().toISOString()
+      createdAt: nowIso,
+      updatedAt: nowIso
     };
 
     if (editingBuyerId) {
@@ -1563,8 +1731,15 @@ Return strictly valid JSON:
 
     if (currentUser) {
       try {
-        await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'buyers', idToUse), newBuyer, { merge: true });
-      } catch (err) {}
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'buyers', idToUse), newBuyer);
+        await setDoc(
+          doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'systemMeta'),
+          { initialSeedDone: true, updatedAt: nowIso },
+          { merge: true }
+        );
+      } catch (err) {
+        setCloudErrorMsg(`Buyer Save Error: ${err.message}`);
+      }
     }
 
     setEditingBuyerId(null);
@@ -1572,7 +1747,7 @@ Return strictly valid JSON:
     setNewBuyerPhone('');
     setNewBuyerReq('');
     setShowBuyerFormModal(false);
-    notifyIsland(editingBuyerId ? "Buyer Profile Updated" : "Buyer Added & Matched");
+    notifyIsland(editingBuyerId ? "Buyer Updated Across Devices" : "Buyer Saved to Shared Cloud");
   };
 
   // Scan 7/12 Utara Photo using Gemini 3 Flash Vision
@@ -1698,8 +1873,8 @@ Return strictly valid JSON:
                 : dynamicIslandMsg
                 ? dynamicIslandMsg
                 : cloudSynced
-                ? 'Cloud Vault Synced • Rajkot OS'
-                : 'Radhika Intelligence Ready'}
+                ? `${syncStatusText} • Shared Multi-Device Cloud`
+                : 'Connecting Cloud Vault...'}
             </span>
           </div>
 
@@ -1747,6 +1922,22 @@ Return strictly valid JSON:
       {/* MAIN SPATIAL WORKSPACE CONTAINER                                    */}
       {/* ================================================================== */}
       <main className="relative z-10 max-w-6xl mx-auto px-4 sm:px-8 pt-6 pb-32 space-y-6">
+
+        {/* Cloud Error Diagnostic Banner (Only shown if Firebase throws a permission/network error) */}
+        {cloudErrorMsg && (
+          <div className="bg-[#3D4043] text-white rounded-[22px] p-4 border border-[#EA9E24] flex flex-wrap items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-center gap-2.5 text-xs font-bold">
+              <Cloud className="w-4 h-4 text-[#EA9E24] shrink-0" />
+              <span>{cloudErrorMsg}</span>
+            </div>
+            <button
+              onClick={() => setCloudErrorMsg('')}
+              className="px-3 py-1 rounded-full bg-white/10 text-[11px] font-bold"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
         
         {/* ================================================================ */}
         {/* TAB 1: SPATIAL PORTFOLIO & INVENTORY                              */}
@@ -1885,6 +2076,20 @@ Return strictly valid JSON:
             </div>
 
             {/* Spatial Glass Property Cards Grid */}
+            {isLoadingCloud ? (
+              <div className="bg-white/80 backdrop-blur-2xl rounded-[30px] p-12 text-center border border-white space-y-3">
+                <RefreshCw className="w-6 h-6 text-[#EA9E24] animate-spin mx-auto" />
+                <p className="text-sm font-extrabold text-[#3D4043]">Syncing Live Multi-Device Cloud Database...</p>
+              </div>
+            ) : filteredProperties.length === 0 ? (
+              <div className="bg-white/80 backdrop-blur-2xl rounded-[30px] p-12 text-center border border-white space-y-3">
+                <Building2 className="w-8 h-8 text-[#EA9E24] mx-auto" />
+                <h3 className="text-base font-black text-[#3D4043]">No Properties Found</h3>
+                <p className="text-xs text-[#3D4043]/60 max-w-md mx-auto">
+                  Your shared cloud portfolio has no matching listings right now. Tap "+ AI Scout" to add a new property from any device.
+                </p>
+              </div>
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {filteredProperties.map((prop) => {
                 const ratePerSqFt = prop.sizeSqFt ? Math.round(Number(prop.priceQuoted) / Number(prop.sizeSqFt)) : 0;
@@ -2038,6 +2243,7 @@ Return strictly valid JSON:
                 );
               })}
             </div>
+            )}
           </div>
         )}
 
@@ -2771,11 +2977,21 @@ Return strictly valid JSON:
                         </button>
                         <button
                           onClick={async () => {
-                            setBuyers(prev => prev.filter(b => b.id !== buyer.id));
+                            const cleanBuyerId = String(buyer.id);
+                            setBuyers(prev => prev.filter(b => b.id !== cleanBuyerId));
                             if (currentUser) {
                               try {
-                                await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'buyers', buyer.id));
-                              } catch (err) {}
+                                await setDoc(
+                                  doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'systemMeta'),
+                                  { initialSeedDone: true, updatedAt: new Date().toISOString() },
+                                  { merge: true }
+                                );
+                                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'buyers', cleanBuyerId));
+                                await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'buyers', cleanBuyerId));
+                                notifyIsland("Buyer Permanently Deleted from Cloud");
+                              } catch (err) {
+                                setCloudErrorMsg(`Buyer Delete Error: ${err.message}`);
+                              }
                             }
                           }}
                           className="p-2 text-[#3D4043]/40 hover:text-[#3D4043] rounded-full"
